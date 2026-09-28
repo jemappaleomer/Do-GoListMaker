@@ -1,0 +1,30 @@
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+
+from app.core.dependencies import get_current_user_optional
+from app.routers import auth, lists
+
+app = FastAPI(title="Do&Go List Maker", version="0.1.0")
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Setup Jinja2 templates
+templates = Jinja2Templates(directory="templates")
+
+# Include Routers
+app.include_router(auth.router)
+app.include_router(lists.router)
+
+@app.get("/", response_class=HTMLResponse)
+async def home(request: Request):
+    user = await get_current_user_optional(request)
+    if user:
+        return RedirectResponse(url="/lists")
+    return RedirectResponse(url="/auth/login")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
