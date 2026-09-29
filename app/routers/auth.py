@@ -133,8 +133,33 @@ async def register_action(
             status_code=status.HTTP_400_BAD_REQUEST
         )
 
+@router.get("/callback")
+async def auth_callback(request: Request, code: Optional[str] = None):
+    """Handles email confirmation link callbacks from Supabase Auth."""
+    if code:
+        try:
+            supabase = get_supabase_client()
+            res = supabase.auth.exchange_code_for_session({"auth_code": code})
+            if res and res.session:
+                response = RedirectResponse(url="/lists", status_code=status.HTTP_303_SEE_OTHER)
+                response.set_cookie(
+                    key="sb_access_token",
+                    value=res.session.access_token,
+                    httponly=True,
+                    max_age=60 * 60 * 24 * 7,
+                    samesite="lax",
+                    secure=False
+                )
+                return response
+        except Exception as e:
+            print("Error in callback:", e)
+    
+    # Callback fails or user is redirected, send to login with success notice
+    return RedirectResponse(url="/auth/login?confirmed=true", status_code=status.HTTP_302_FOUND)
+
 @router.get("/logout")
 async def logout():
     response = RedirectResponse(url="/auth/login", status_code=status.HTTP_302_FOUND)
     response.delete_cookie(key="sb_access_token")
     return response
+
