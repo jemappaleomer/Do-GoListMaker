@@ -91,6 +91,9 @@ Tarayıcınızda açın: [http://127.0.0.1:8000](http://127.0.0.1:8000)
   - [x] Maddelerin ortalama puanının dinamik hesaplanıp arayüzde gösterilmesi
   - [x] Kullanıcıların kendi puanlarını güncelleyebilmesi (Upsert)
   - [x] Yorumların yanında kullanıcı adları (@username) ve tarih gösterimi
-- [ ] **FAZ 4: UI/UX İyileştirmeleri ve Vercel Deployment**
-  - [ ] Mobil uyumlu detaylı animasyonlar ve mikro-etkileşimler
-  - [ ] `vercel.json` ve Serverless deploy hazırlığı
+- [x] **FAZ 4: UI/UX İyileştirmeleri ve Vercel Deployment**
+  - [x] Özel CSS mikro-etkileşimleri, animasyonlar ve modern scrollbar
+  - [x] `vercel.json` (serverless routing & max lambda size) yapılandırması
+  - [x] `api/index.py` Vercel Serverless giriş noktası
+  - [x] Dinamik mutlak dizin yolları (`BASE_DIR`) ile Vercel uyumluluğu
+  - [x] Vercel deploy rehberi ve dokümantasyon

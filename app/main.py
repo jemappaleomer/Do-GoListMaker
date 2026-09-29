@@ -3,16 +3,17 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app.core.config import TEMPLATES_DIR, STATIC_DIR
 from app.core.dependencies import get_current_user_optional
 from app.routers import auth, lists
 
 app = FastAPI(title="Do&Go List Maker", version="0.1.0")
 
 # Mount static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # Setup Jinja2 templates
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 # Include Routers
 app.include_router(auth.router)

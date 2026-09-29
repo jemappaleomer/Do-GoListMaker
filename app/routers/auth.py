@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Request, Form, Response, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from app.core.config import TEMPLATES_DIR
 from app.core.supabase import get_supabase_client
 from app.core.dependencies import get_current_user_optional
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):

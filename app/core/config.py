@@ -1,4 +1,9 @@
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+TEMPLATES_DIR = BASE_DIR / "templates"
+STATIC_DIR = BASE_DIR / "static"
 
 class Settings(BaseSettings):
     SUPABASE_URL: str = ""
@@ -13,3 +18,4 @@ class Settings(BaseSettings):
     )
 
 settings = Settings()
+

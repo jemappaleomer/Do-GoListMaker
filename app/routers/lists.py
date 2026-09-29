@@ -2,11 +2,12 @@ from typing import Optional
 from fastapi import APIRouter, Request, Form, Depends, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from app.core.config import TEMPLATES_DIR
 from app.core.dependencies import get_current_user_required, get_current_user_optional
 from app.core.supabase import get_authenticated_client, get_supabase_client
 
 router = APIRouter(prefix="/lists", tags=["lists"])
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 @router.get("", response_class=HTMLResponse)
 async def list_index(request: Request, user: dict = Depends(get_current_user_optional)):
