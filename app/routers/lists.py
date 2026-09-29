@@ -275,14 +275,25 @@ async def submit_feedback(
         if not item_check.data or not item_check.data.get("is_completed"):
             return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
 
-        # Upsert feedback
-        supabase.table("feedbacks").upsert({
+        # Mevcut feedback var mı kontrol et
+        existing_fb = supabase.table("feedbacks").select("id").eq("item_id", item_id).eq("user_id", user["id"]).execute()
+        
+        feedback_payload = {
             "item_id": item_id,
             "user_id": user["id"],
             "rating": rating,
             "comment": comment.strip() if comment else None
-        }, on_conflict="item_id, user_id").execute()
+        }
+
+        if existing_fb.data and len(existing_fb.data) > 0:
+            fb_id = existing_fb.data[0]["id"]
+            supabase.table("feedbacks").update({
+                "rating": rating,
+                "comment": comment.strip() if comment else None
+            }).eq("id", fb_id).execute()
+        else:
+            supabase.table("feedbacks").insert(feedback_payload).execute()
     except Exception as e:
-        print("Error submitting feedback:", e)
+        print("Error submitting feedback:", type(e), e)
     return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
 
