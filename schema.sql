@@ -3,11 +3,15 @@
 -- 1. Profiles Table (Auth.users ile senkronize profil bilgileri)
 CREATE TABLE IF NOT EXISTS public.profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    username TEXT UNIQUE NOT NULL,
-    email TEXT UNIQUE NOT NULL,
+    username TEXT NOT NULL,
+    email TEXT NOT NULL,
     avatar_url TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- Case-insensitive (büyük/küçük harf duyarsız) benzersiz indeksler
+CREATE UNIQUE INDEX IF NOT EXISTS profiles_username_lower_idx ON public.profiles (LOWER(username));
+CREATE UNIQUE INDEX IF NOT EXISTS profiles_email_lower_idx ON public.profiles (LOWER(email));
 
 -- Profiles tablosunu yeni kullanıcı kaydolduğunda otomatik tetikleyen fonksiyon
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -16,8 +20,8 @@ BEGIN
     INSERT INTO public.profiles (id, username, email)
     VALUES (
         NEW.id,
-        COALESCE(NEW.raw_user_meta_data->>'username', split_part(NEW.email, '@', 1)),
-        NEW.email
+        LOWER(COALESCE(NEW.raw_user_meta_data->>'username', split_part(NEW.email, '@', 1))),
+        LOWER(NEW.email)
     )
     ON CONFLICT (id) DO UPDATE
     SET username = EXCLUDED.username,
@@ -85,21 +89,32 @@ ALTER TABLE public.list_permissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.feedbacks ENABLE ROW LEVEL SECURITY;
 
 -- Temel RLS Politikaları
--- Profiles: Herkes okuyabilir, sadece sahibi güncelleyebilir
+-- Profiles
+DROP POLICY IF EXISTS "Public profiles are viewable by everyone" ON public.profiles;
 CREATE POLICY "Public profiles are viewable by everyone" ON public.profiles FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
 CREATE POLICY "Users can update their own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
 
--- Lists: Sahibi her şeyi yapabilir, paylaşılanları herkes okuyabilir
+-- Lists
+DROP POLICY IF EXISTS "Users can view own lists or shared lists" ON public.lists;
 CREATE POLICY "Users can view own lists or shared lists" ON public.lists FOR SELECT USING (
     auth.uid() = owner_id OR is_shared = true OR EXISTS (
         SELECT 1 FROM public.list_permissions WHERE list_id = public.lists.id AND user_id = auth.uid()
     )
 );
+
+DROP POLICY IF EXISTS "Users can insert own lists" ON public.lists;
 CREATE POLICY "Users can insert own lists" ON public.lists FOR INSERT WITH CHECK (auth.uid() = owner_id);
+
+DROP POLICY IF EXISTS "Users can update own lists" ON public.lists;
 CREATE POLICY "Users can update own lists" ON public.lists FOR UPDATE USING (auth.uid() = owner_id);
+
+DROP POLICY IF EXISTS "Users can delete own lists" ON public.lists;
 CREATE POLICY "Users can delete own lists" ON public.lists FOR DELETE USING (auth.uid() = owner_id);
 
--- List Items: Liste erişimi olanlar okuyabilir/ekleyebilir
+-- List Items
+DROP POLICY IF EXISTS "Users can view items of accessible lists" ON public.list_items;
 CREATE POLICY "Users can view items of accessible lists" ON public.list_items FOR SELECT USING (
     EXISTS (
         SELECT 1 FROM public.lists WHERE id = public.list_items.list_id AND (
@@ -109,6 +124,8 @@ CREATE POLICY "Users can view items of accessible lists" ON public.list_items FO
         )
     )
 );
+
+DROP POLICY IF EXISTS "Users can insert items to accessible lists" ON public.list_items;
 CREATE POLICY "Users can insert items to accessible lists" ON public.list_items FOR INSERT WITH CHECK (
     EXISTS (
         SELECT 1 FROM public.lists WHERE id = public.list_items.list_id AND (
@@ -118,6 +135,8 @@ CREATE POLICY "Users can insert items to accessible lists" ON public.list_items 
         )
     )
 );
+
+DROP POLICY IF EXISTS "Users can update items in accessible lists" ON public.list_items;
 CREATE POLICY "Users can update items in accessible lists" ON public.list_items FOR UPDATE USING (
     EXISTS (
         SELECT 1 FROM public.lists WHERE id = public.list_items.list_id AND (
@@ -127,6 +146,8 @@ CREATE POLICY "Users can update items in accessible lists" ON public.list_items 
         )
     )
 );
+
+DROP POLICY IF EXISTS "Users can delete items in accessible lists" ON public.list_items;
 CREATE POLICY "Users can delete items in accessible lists" ON public.list_items FOR DELETE USING (
     EXISTS (
         SELECT 1 FROM public.lists WHERE id = public.list_items.list_id AND (

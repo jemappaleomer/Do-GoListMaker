@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="max-w-3xl mx-auto space-y-6">
-    <!-- Breadcrumb & Back -->
+    <!-- Breadcrumb & Top Bar -->
     <div class="flex items-center justify-between">
         <a href="/lists" class="inline-flex items-center space-x-1.5 text-sm text-slate-500 hover:text-slate-800 transition">
             <i data-lucide="arrow-left" class="w-4 h-4"></i>
@@ -12,36 +12,133 @@
         </a>
 
         {% if is_owner %}
-        <form action="/lists/{{ list_data.id }}/delete" method="POST" onsubmit="return confirm('Bu listeyi silmek istediğinize emin misiniz?');">
-            <button type="submit" class="inline-flex items-center space-x-1.5 text-xs text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition">
-                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                <span>Listeyi Sil</span>
-            </button>
-        </form>
+        <div class="flex items-center space-x-2">
+            <!-- Toggle Share Status Button -->
+            <form action="/lists/{{ list_data.id }}/toggle-share" method="POST" class="m-0">
+                <button type="submit" 
+                        class="inline-flex items-center space-x-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition {% if list_data.is_shared %}bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100{% else %}bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200{% endif %}">
+                    <i data-lucide="{% if list_data.is_shared %}globe{% else %}lock{% endif %}" class="w-3.5 h-3.5"></i>
+                    <span>{% if list_data.is_shared %}Paylaşıma Açık{% else %}Özel Liste (Gizli){% endif %}</span>
+                </button>
+            </form>
+
+            <!-- Delete List -->
+            <form action="/lists/{{ list_data.id }}/delete" method="POST" onsubmit="return confirm('Bu listeyi kalıcı olarak silmek istediğinize emin misiniz?');" class="m-0">
+                <button type="submit" class="inline-flex items-center space-x-1.5 text-xs text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                    <span>Listeyi Sil</span>
+                </button>
+            </form>
+        </div>
         {% endif %}
     </div>
 
+    <!-- Anonymous / Visitor Banner (Read-only mode) -->
+    {% if not user %}
+    <div class="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm">
+        <div class="flex items-center space-x-3 text-slate-700 text-sm">
+            <span class="p-2 bg-emerald-100 text-emerald-700 rounded-xl">
+                <i data-lucide="eye" class="w-5 h-5"></i>
+            </span>
+            <div>
+                <p class="font-medium text-slate-900">Şu anda bu listeyi "Salt Okunur" görüntülüyorsunuz.</p>
+                <p class="text-xs text-slate-500 mt-0.5">Madde eklemek veya tamamlamak için üye olmanız gerekir.</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-2">
+            <a href="/auth/login" class="text-xs font-semibold text-slate-700 hover:text-emerald-700 px-3 py-1.5 bg-white border border-slate-200 rounded-lg shadow-2xs">Giriş Yap</a>
+            <a href="/auth/register" class="text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg shadow-sm">Kayıt Ol</a>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- List Header Card -->
-    <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
+    <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
         <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
             <div>
-                <h1 class="text-2xl font-bold text-slate-900">{{ list_data.title }}</h1>
+                <div class="flex items-center space-x-2 mb-1">
+                    <h1 class="text-2xl font-bold text-slate-900">{{ list_data.title }}</h1>
+                    {% if list_data.is_shared %}
+                    <span class="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <i data-lucide="globe" class="w-3 h-3"></i>
+                        <span>Ortak Liste</span>
+                    </span>
+                    {% endif %}
+                </div>
+                
                 {% if list_data.description %}
-                <p class="text-slate-600 text-sm mt-1.5">{{ list_data.description }}</p>
+                <p class="text-slate-600 text-sm mt-1">{{ list_data.description }}</p>
                 {% endif %}
+
+                <p class="text-xs text-slate-400 mt-2 flex items-center space-x-1">
+                    <i data-lucide="user" class="w-3.5 h-3.5"></i>
+                    <span>Oluşturan: <strong class="text-slate-600 font-medium">@{{ list_data.profiles.username if list_data.profiles else 'Kullanıcı' }}</strong></span>
+                </p>
             </div>
 
             <!-- Stats/Badge -->
             <div class="flex items-center space-x-2 flex-shrink-0">
-                <span class="inline-flex items-center space-x-1 px-3 py-1 bg-slate-100 text-slate-700 text-xs font-medium rounded-full">
+                <span class="inline-flex items-center space-x-1 px-3 py-1.5 bg-slate-100 text-slate-700 text-xs font-medium rounded-full">
                     <i data-lucide="check-circle" class="w-3.5 h-3.5 text-emerald-600"></i>
                     <span>{{ completed_count }} / {{ items|length }} Tamamlandı</span>
                 </span>
             </div>
         </div>
+
+        <!-- Share Link Box (If shared) -->
+        {% if list_data.is_shared %}
+        <div class="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-50 p-3 rounded-xl">
+            <div class="flex items-center space-x-2 text-xs text-slate-600 min-w-0">
+                <i data-lucide="link" class="w-4 h-4 text-emerald-600 flex-shrink-0"></i>
+                <span class="text-slate-500 flex-shrink-0">Paylaşım Linki:</span>
+                <span id="share-url" class="truncate font-mono bg-white px-2 py-1 rounded border border-slate-200 text-slate-700 select-all"></span>
+            </div>
+            <button onclick="copyShareLink()" id="copy-btn"
+                    class="inline-flex items-center justify-center space-x-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-medium rounded-lg transition shadow-2xs">
+                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                <span id="copy-text">Linki Kopyala</span>
+            </button>
+        </div>
+        {% endif %}
     </div>
 
-    <!-- Add Item Form -->
+    <!-- Collaborators & Permissions Section (Owner View Only) -->
+    {% if is_owner and collaborators and collaborators|length > 0 %}
+    <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3">
+        <div class="flex items-center space-x-2 text-slate-800">
+            <i data-lucide="users" class="w-4 h-4 text-emerald-600"></i>
+            <h3 class="text-sm font-semibold">Katılımcılar ve Yetkiler ({{ collaborators|length }})</h3>
+        </div>
+
+        <div class="divide-y divide-slate-100">
+            {% for collab in collaborators %}
+            <div class="py-2.5 flex items-center justify-between gap-4">
+                <div class="flex items-center space-x-2.5">
+                    <span class="w-7 h-7 bg-slate-100 rounded-full flex items-center justify-center text-xs font-bold text-slate-600">
+                        {{ collab.profiles.username[0]|upper if collab.profiles else 'U' }}
+                    </span>
+                    <div>
+                        <p class="text-xs font-semibold text-slate-800">@{{ collab.profiles.username if collab.profiles else 'Anonim' }}</p>
+                        <p class="text-[11px] text-slate-400">Üye Katılımcı</p>
+                    </div>
+                </div>
+
+                <form action="/lists/{{ list_data.id }}/permissions/{{ collab.id }}" method="POST" class="flex items-center space-x-2 m-0">
+                    <label class="flex items-center space-x-1.5 text-xs text-slate-600 cursor-pointer">
+                        <input type="checkbox" name="can_delete" value="true" onchange="this.form.submit()"
+                               {% if collab.can_delete %}checked{% endif %}
+                               class="w-3.5 h-3.5 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500">
+                        <span>Silme Yetkisi Ver</span>
+                    </label>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Add Item Form (Only for logged-in users who can edit) -->
+    {% if user %}
     <div class="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-sm">
         <form action="/lists/{{ list_data.id }}/items" method="POST" class="space-y-3">
             <div class="flex flex-col sm:flex-row gap-3">
@@ -61,6 +158,7 @@
             </div>
         </form>
     </div>
+    {% endif %}
 
     <!-- Items List -->
     <div class="space-y-3">
@@ -68,7 +166,8 @@
             {% for item in items %}
             <div class="bg-white border {% if item.is_completed %}border-slate-100 bg-slate-50/60{% else %}border-slate-200{% endif %} rounded-2xl p-4 shadow-sm flex items-center justify-between gap-4 transition group">
                 <div class="flex items-center space-x-3.5 min-w-0">
-                    <!-- Toggle Checkbox Form -->
+                    <!-- Toggle Checkbox Form (Disabled if not logged in) -->
+                    {% if user %}
                     <form action="/lists/{{ list_data.id }}/items/{{ item.id }}/toggle" method="POST" class="flex items-center m-0">
                         <button type="submit" class="text-slate-400 hover:text-emerald-600 transition flex items-center">
                             {% if item.is_completed %}
@@ -78,27 +177,45 @@
                             {% endif %}
                         </button>
                     </form>
+                    {% else %}
+                    <div class="text-slate-300 flex items-center">
+                        {% if item.is_completed %}
+                            <i data-lucide="check-circle-2" class="w-6 h-6 text-emerald-600 fill-emerald-50"></i>
+                        {% else %}
+                            <i data-lucide="circle" class="w-6 h-6 text-slate-300"></i>
+                        {% endif %}
+                    </div>
+                    {% endif %}
 
                     <div class="min-w-0">
                         <p class="text-sm font-medium {% if item.is_completed %}line-through text-slate-400{% else %}text-slate-800{% endif %} truncate">
                             {{ item.title }}
                         </p>
-                        {% if item.location_url %}
-                        <a href="{{ item.location_url }}" target="_blank" rel="noopener noreferrer" 
-                           class="inline-flex items-center space-x-1 text-xs text-emerald-600 hover:underline mt-0.5">
-                            <i data-lucide="map-pin" class="w-3 h-3"></i>
-                            <span>Haritada Gör</span>
-                        </a>
-                        {% endif %}
+                        <div class="flex items-center space-x-3 mt-0.5">
+                            {% if item.location_url %}
+                            <a href="{{ item.location_url }}" target="_blank" rel="noopener noreferrer" 
+                               class="inline-flex items-center space-x-1 text-xs text-emerald-600 hover:underline">
+                                <i data-lucide="map-pin" class="w-3 h-3"></i>
+                                <span>Haritada Gör</span>
+                            </a>
+                            {% endif %}
+                            {% if item.profiles %}
+                            <span class="text-[11px] text-slate-400">
+                                @{{ item.profiles.username }}
+                            </span>
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
 
-                <!-- Delete Item Button -->
+                <!-- Delete Item Button (Owner or Creator or CanDelete permission) -->
+                {% if is_owner or (user and item.created_by == user.id) or can_delete %}
                 <form action="/lists/{{ list_data.id }}/items/{{ item.id }}/delete" method="POST" class="m-0 opacity-80 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button type="submit" class="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition">
+                    <button type="submit" class="p-1.5 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition" title="Maddeyi Sil">
                         <i data-lucide="trash" class="w-4 h-4"></i>
                     </button>
                 </form>
+                {% endif %}
             </div>
             {% endfor %}
         {% else %}
@@ -107,9 +224,36 @@
                     <i data-lucide="inbox" class="w-6 h-6"></i>
                 </div>
                 <p class="text-sm font-medium text-slate-600">Bu listede henüz hiç madde yok.</p>
+                {% if user %}
                 <p class="text-xs text-slate-400 mt-1">Yukarıdaki formdan hemen bir madde ekleyebilirsiniz.</p>
+                {% endif %}
             </div>
         {% endif %}
     </div>
 </div>
 {% endblock %}
+
+{% block scripts %}
+<script>
+    // Dinamik URL ayarı ve link kopyalama
+    const shareUrlSpan = document.getElementById('share-url');
+    if (shareUrlSpan) {
+        shareUrlSpan.innerText = window.location.href;
+    }
+
+    function copyShareLink() {
+        const url = window.location.href;
+        navigator.clipboard.writeText(url).then(() => {
+            const btn = document.getElementById('copy-btn');
+            const txt = document.getElementById('copy-text');
+            txt.innerText = 'Kopyalandı!';
+            btn.classList.add('bg-emerald-50', 'text-emerald-700', 'border-emerald-300');
+            setTimeout(() => {
+                txt.innerText = 'Linki Kopyala';
+                btn.classList.remove('bg-emerald-50', 'text-emerald-700', 'border-emerald-300');
+            }, 2000);
+        });
+    }
+</script>
+{% endblock %}
+

@@ -81,15 +81,39 @@ async def register_action(
     email: str = Form(...),
     password: str = Form(...)
 ):
+    clean_username = username.strip().lower()
+    clean_email = email.strip().lower()
+
+    # Kullanıcı adı kontrolü (sadece harf, rakam ve alt çizgi/nokta)
+    import re
+    if not re.match(r"^[a-z0-9_.]+$", clean_username):
+        return templates.TemplateResponse(
+            request=request,
+            name="auth/register.html",
+            context={"user": None, "error": "Kullanıcı adı sadece küçük harf, rakam, alt çizgi (_) ve nokta içerebilir."},
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+
     try:
         supabase = get_supabase_client()
+
+        # Kullanıcı adı daha önce alınmış mı kontrol et
+        existing = supabase.table("profiles").select("id").eq("username", clean_username).execute()
+        if existing.data and len(existing.data) > 0:
+            return templates.TemplateResponse(
+                request=request,
+                name="auth/register.html",
+                context={"user": None, "error": f"'{clean_username}' kullanıcı adı zaten alınmış."},
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
         # Sign up with metadata
         auth_response = supabase.auth.sign_up({
-            "email": email,
+            "email": clean_email,
             "password": password,
             "options": {
                 "data": {
-                    "username": username
+                    "username": clean_username
                 }
             }
         })

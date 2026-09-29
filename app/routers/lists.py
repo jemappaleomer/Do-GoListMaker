@@ -13,19 +13,36 @@ async def list_index(request: Request, user: dict = Depends(get_current_user_opt
     if not user:
         return RedirectResponse(url="/auth/login", status_code=status.HTTP_302_FOUND)
 
+    my_lists = []
+    shared_lists = []
+
     try:
         supabase = get_authenticated_client(user["access_token"])
-        response = supabase.table("lists").select("*").order("created_at", desc=True).execute()
-        lists_data = response.data or []
+        
+        # 1. Kullanıcının kendi sahip olduğu listeler
+        my_res = supabase.table("lists").select("*").eq("owner_id", user["id"]).order("created_at", desc=True).execute()
+        my_lists = my_res.data or []
+
+        # 2. Kullanıcıyla paylaşılan ve katıldığı listeler
+        perm_res = supabase.table("list_permissions").select("list_id, can_delete, lists(*)").eq("user_id", user["id"]).execute()
+        if perm_res.data:
+            for item in perm_res.data:
+                if item.get("lists"):
+                    l_data = item["lists"]
+                    # Kendi listesi değilse paylaşılanlar listesine ekle
+                    if l_data.get("owner_id") != user["id"]:
+                        l_data["can_delete_perm"] = item.get("can_delete", False)
+                        shared_lists.append(l_data)
     except Exception as e:
-        lists_data = []
+        print("Error fetching lists:", e)
 
     return templates.TemplateResponse(
         request=request,
         name="lists/index.html",
         context={
             "user": user,
-            "lists": lists_data,
+            "my_lists": my_lists,
+            "shared_lists": shared_lists,
             "error": None
         }
     )
@@ -35,6 +52,7 @@ async def create_list(
     request: Request,
     title: str = Form(...),
     description: Optional[str] = Form(None),
+    is_shared: bool = Form(False),
     user: dict = Depends(get_current_user_required)
 ):
     try:
@@ -43,32 +61,65 @@ async def create_list(
             "title": title.strip(),
             "description": description.strip() if description else None,
             "owner_id": user["id"],
-            "is_shared": False
+            "is_shared": is_shared
         }).execute()
         return RedirectResponse(url="/lists", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as e:
+        print("Error creating list:", e)
         return RedirectResponse(url="/lists", status_code=status.HTTP_303_SEE_OTHER)
 
 @router.get("/{list_id}", response_class=HTMLResponse)
 async def get_list(list_id: str, request: Request, user: dict = Depends(get_current_user_optional)):
-    if not user:
-        return RedirectResponse(url="/auth/login", status_code=status.HTTP_302_FOUND)
-
     try:
-        supabase = get_authenticated_client(user["access_token"])
-        # Fetch list details
-        list_res = supabase.table("lists").select("*").eq("id", list_id).single().execute()
+        # Eğer giriş yapılmışsa kullanıcının kimliğiyle, yapılmamışsa anon client ile çek
+        client = get_authenticated_client(user["access_token"]) if user else get_supabase_client()
+        
+        # Liste detayını ve sahibinin profilini çek
+        list_res = client.table("lists").select("*, profiles:owner_id(username)").eq("id", list_id).single().execute()
         list_data = list_res.data
 
         if not list_data:
-            return RedirectResponse(url="/lists", status_code=status.HTTP_302_FOUND)
+            return RedirectResponse(url="/lists" if user else "/auth/login", status_code=status.HTTP_302_FOUND)
 
-        # Fetch items
-        items_res = supabase.table("list_items").select("*").eq("list_id", list_id).order("created_at", desc=False).execute()
+        is_owner = user is not None and list_data.get("owner_id") == user["id"]
+        is_shared = list_data.get("is_shared", False)
+
+        # Eğer liste gizliyse (private) ve bakan kişi sahibi değilse
+        if not is_shared and not is_owner:
+            # Belki özel izin verilmiştir?
+            if user:
+                perm_check = client.table("list_permissions").select("id").eq("list_id", list_id).eq("user_id", user["id"]).execute()
+                if not perm_check.data or len(perm_check.data) == 0:
+                    return RedirectResponse(url="/lists", status_code=status.HTTP_302_FOUND)
+            else:
+                return RedirectResponse(url="/auth/login", status_code=status.HTTP_302_FOUND)
+
+        # Giriş yapmış ve sahibi olmayan kullanıcı paylaşılan listeyi açtığında otomatik list_permissions'a ekle (collaborator olsun)
+        can_delete = is_owner
+        if user and not is_owner:
+            perm_res = client.table("list_permissions").select("*").eq("list_id", list_id).eq("user_id", user["id"]).execute()
+            if not perm_res.data:
+                # Yeni katılımcı olarak ekle
+                client.table("list_permissions").insert({
+                    "list_id": list_id,
+                    "user_id": user["id"],
+                    "can_edit": True,
+                    "can_delete": False
+                }).execute()
+                can_delete = False
+            else:
+                can_delete = perm_res.data[0].get("can_delete", False)
+
+        # Liste maddelerini çek
+        items_res = client.table("list_items").select("*, profiles:created_by(username)").eq("list_id", list_id).order("created_at", desc=False).execute()
         items = items_res.data or []
         completed_count = sum(1 for item in items if item.get("is_completed"))
 
-        is_owner = list_data.get("owner_id") == user["id"]
+        # Eğer liste sahibiyse katılımcıları listele
+        collaborators = []
+        if is_owner:
+            collab_res = client.table("list_permissions").select("id, user_id, can_delete, can_edit, profiles:user_id(username, email)").eq("list_id", list_id).execute()
+            collaborators = collab_res.data or []
 
         return templates.TemplateResponse(
             request=request,
@@ -78,19 +129,53 @@ async def get_list(list_id: str, request: Request, user: dict = Depends(get_curr
                 "list_data": list_data,
                 "items": items,
                 "completed_count": completed_count,
-                "is_owner": is_owner
+                "is_owner": is_owner,
+                "can_delete": can_delete,
+                "collaborators": collaborators
             }
         )
     except Exception as e:
-        return RedirectResponse(url="/lists", status_code=status.HTTP_302_FOUND)
+        print("Error getting list:", e)
+        return RedirectResponse(url="/lists" if user else "/auth/login", status_code=status.HTTP_302_FOUND)
+
+@router.post("/{list_id}/toggle-share")
+async def toggle_share(list_id: str, user: dict = Depends(get_current_user_required)):
+    """Liste sahibi için paylaşıma açma / kapama endpoint'i."""
+    try:
+        supabase = get_authenticated_client(user["access_token"])
+        current_res = supabase.table("lists").select("is_shared").eq("id", list_id).eq("owner_id", user["id"]).single().execute()
+        if current_res.data:
+            new_val = not current_res.data.get("is_shared", False)
+            supabase.table("lists").update({"is_shared": new_val}).eq("id", list_id).execute()
+    except Exception as e:
+        print("Error toggling share:", e)
+    return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
+
+@router.post("/{list_id}/permissions/{perm_id}")
+async def update_permission(
+    list_id: str,
+    perm_id: str,
+    can_delete: bool = Form(False),
+    user: dict = Depends(get_current_user_required)
+):
+    """Liste sahibinin bir katılımcının silme yetkisini güncellemesi."""
+    try:
+        supabase = get_authenticated_client(user["access_token"])
+        # Listenin sahibi olduğunu doğrula
+        list_res = supabase.table("lists").select("owner_id").eq("id", list_id).single().execute()
+        if list_res.data and list_res.data["owner_id"] == user["id"]:
+            supabase.table("list_permissions").update({"can_delete": can_delete}).eq("id", perm_id).execute()
+    except Exception as e:
+        print("Error updating permission:", e)
+    return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
 
 @router.post("/{list_id}/delete")
 async def delete_list(list_id: str, user: dict = Depends(get_current_user_required)):
     try:
         supabase = get_authenticated_client(user["access_token"])
         supabase.table("lists").delete().eq("id", list_id).eq("owner_id", user["id"]).execute()
-    except Exception:
-        pass
+    except Exception as e:
+        print("Error deleting list:", e)
     return RedirectResponse(url="/lists", status_code=status.HTTP_303_SEE_OTHER)
 
 @router.post("/{list_id}/items")
@@ -109,30 +194,40 @@ async def add_item(
             "is_completed": False,
             "created_by": user["id"]
         }).execute()
-    except Exception:
-        pass
+    except Exception as e:
+        print("Error adding item:", e)
     return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
 
 @router.post("/{list_id}/items/{item_id}/toggle")
 async def toggle_item(list_id: str, item_id: str, user: dict = Depends(get_current_user_required)):
     try:
         supabase = get_authenticated_client(user["access_token"])
-        # Get current completion status
         item_res = supabase.table("list_items").select("is_completed").eq("id", item_id).single().execute()
         if item_res.data:
             current_status = item_res.data.get("is_completed", False)
             supabase.table("list_items").update({
                 "is_completed": not current_status
             }).eq("id", item_id).execute()
-    except Exception:
-        pass
+    except Exception as e:
+        print("Error toggling item:", e)
     return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
 
 @router.post("/{list_id}/items/{item_id}/delete")
 async def delete_item(list_id: str, item_id: str, user: dict = Depends(get_current_user_required)):
     try:
         supabase = get_authenticated_client(user["access_token"])
-        supabase.table("list_items").delete().eq("id", item_id).execute()
-    except Exception:
-        pass
+        # Silme yetkisi kontrolü: Liste sahibi mi, maddeyi ekleyen mi, yoksa can_delete izni var mı?
+        list_res = supabase.table("lists").select("owner_id").eq("id", list_id).single().execute()
+        is_owner = list_res.data and list_res.data["owner_id"] == user["id"]
+
+        item_res = supabase.table("list_items").select("created_by").eq("id", item_id).single().execute()
+        is_creator = item_res.data and item_res.data["created_by"] == user["id"]
+
+        perm_res = supabase.table("list_permissions").select("can_delete").eq("list_id", list_id).eq("user_id", user["id"]).execute()
+        has_perm = perm_res.data and perm_res.data[0].get("can_delete", False)
+
+        if is_owner or is_creator or has_perm:
+            supabase.table("list_items").delete().eq("id", item_id).execute()
+    except Exception as e:
+        print("Error deleting item:", e)
     return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)

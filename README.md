@@ -78,9 +78,13 @@ Tarayıcınızda açın: [http://127.0.0.1:8000](http://127.0.0.1:8000)
   - [x] Giriş (Login), Kayıt Ol (Register), Çıkış (Logout) sayfaları
   - [x] Liste oluşturma, listeleme ve silme
   - [x] Listeye madde ekleme, check/tamamlama ve silme
-- [ ] **FAZ 2: İşbirliği (Collaboration) ve Link Paylaşımı**
-  - [ ] UUID linki ile listeyi read-only açma
-  - [ ] Üye olanların yetkilendirilmesi ve ortak yönetim
+- [x] **FAZ 2: İşbirliği (Collaboration) ve Link Paylaşımı**
+  - [x] Liste için dinamik paylaşım linki oluşturma ve tek tıkla kopyalama
+  - [x] Liste sahibi için paylaşıma açma/kapama (`is_shared` toggle)
+  - [x] Giriş yapmamış ziyaretçiler için "Salt Okunur (Read-only)" görünüm ve CTA banner'ı
+  - [x] Üye kullanıcıların paylaşılan listelere katılımcı olarak dahil olması
+  - [x] Katılımcılar için "Benimle Paylaşılanlar" sekmesi/bölümü
+  - [x] Liste sahibi için "Katılımcılar ve Yetkiler" paneli (Silme izni tanımlama)
 - [ ] **FAZ 3: Puanlama, Feedback ve Harita Özelliği**
   - [ ] Harita entegrasyonu (Google Maps linkleri)
   - [ ] 1-5 yıldız puanlama ve yorum sistemi
