@@ -259,14 +259,14 @@ async def delete_item(list_id: str, item_id: str, user: dict = Depends(get_curre
 async def submit_feedback(
     list_id: str,
     item_id: str,
-    rating: int = Form(...),
+    rating: float = Form(...),
     comment: Optional[str] = Form(None),
     user: dict = Depends(get_current_user_required)
 ):
     """Tamamlanan bir maddeye puan ve yorum ekleme veya güncelleme."""
     try:
-        # Puanın 1-5 aralığında olduğunu doğrula
-        rating = max(1, min(5, rating))
+        # Puanın 0.5 - 5.0 aralığında olduğunu doğrula
+        rating = max(0.5, min(5.0, round(float(rating) * 2) / 2)) # En yakın 0.5'e yuvarla
         supabase = get_authenticated_client(user["access_token"])
         
         # Madde tamamlanmış mı kontrol et

@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS public.feedbacks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     item_id UUID NOT NULL REFERENCES public.list_items(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    rating SMALLINT CHECK (rating >= 1 AND rating <= 5),
+    rating NUMERIC(2, 1) CHECK (rating >= 0.5 AND rating <= 5.0),
     comment TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     UNIQUE (item_id, user_id)
