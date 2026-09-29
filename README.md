@@ -85,9 +85,12 @@ Tarayıcınızda açın: [http://127.0.0.1:8000](http://127.0.0.1:8000)
   - [x] Üye kullanıcıların paylaşılan listelere katılımcı olarak dahil olması
   - [x] Katılımcılar için "Benimle Paylaşılanlar" sekmesi/bölümü
   - [x] Liste sahibi için "Katılımcılar ve Yetkiler" paneli (Silme izni tanımlama)
-- [ ] **FAZ 3: Puanlama, Feedback ve Harita Özelliği**
-  - [ ] Harita entegrasyonu (Google Maps linkleri)
-  - [ ] 1-5 yıldız puanlama ve yorum sistemi
+- [x] **FAZ 3: Puanlama, Feedback ve Harita Özelliği**
+  - [x] Harita entegrasyonu (Google Maps linkleri, yeni sekmede açılma)
+  - [x] Tamamlanan maddeler için 1-5 yıldız puanlama ve yorum (feedback) sistemi
+  - [x] Maddelerin ortalama puanının dinamik hesaplanıp arayüzde gösterilmesi
+  - [x] Kullanıcıların kendi puanlarını güncelleyebilmesi (Upsert)
+  - [x] Yorumların yanında kullanıcı adları (@username) ve tarih gösterimi
 - [ ] **FAZ 4: UI/UX İyileştirmeleri ve Vercel Deployment**
   - [ ] Mobil uyumlu detaylı animasyonlar ve mikro-etkileşimler
   - [ ] `vercel.json` ve Serverless deploy hazırlığı

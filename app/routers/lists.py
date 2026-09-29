@@ -112,8 +112,32 @@ async def get_list(list_id: str, request: Request, user: dict = Depends(get_curr
 
         # Liste maddelerini çek
         items_res = client.table("list_items").select("*, profiles:created_by(username)").eq("list_id", list_id).order("created_at", desc=False).execute()
-        items = items_res.data or []
-        completed_count = sum(1 for item in items if item.get("is_completed"))
+        raw_items = items_res.data or []
+        completed_count = sum(1 for item in raw_items if item.get("is_completed"))
+
+        # Her madde için Feedback (puan ve yorum) verilerini çek ve ortalama hesapla
+        items = []
+        item_ids = [item["id"] for item in raw_items]
+        all_feedbacks = []
+        if item_ids:
+            try:
+                fb_res = client.table("feedbacks").select("*, profiles:user_id(username)").in_("item_id", item_ids).order("created_at", desc=True).execute()
+                all_feedbacks = fb_res.data or []
+            except Exception as fe:
+                print("Error loading feedbacks:", fe)
+
+        # Maddeleri feedback verileri ile zenginleştir
+        for item in raw_items:
+            item_fbs = [fb for fb in all_feedbacks if fb.get("item_id") == item["id"]]
+            ratings = [fb["rating"] for fb in item_fbs if fb.get("rating") is not None]
+            avg_rating = round(sum(ratings) / len(ratings), 1) if ratings else None
+            user_feedback = next((fb for fb in item_fbs if user and fb.get("user_id") == user["id"]), None)
+
+            item["feedbacks"] = item_fbs
+            item["avg_rating"] = avg_rating
+            item["rating_count"] = len(ratings)
+            item["user_feedback"] = user_feedback
+            items.append(item)
 
         # Eğer liste sahibiyse katılımcıları listele
         collaborators = []
@@ -216,7 +240,6 @@ async def toggle_item(list_id: str, item_id: str, user: dict = Depends(get_curre
 async def delete_item(list_id: str, item_id: str, user: dict = Depends(get_current_user_required)):
     try:
         supabase = get_authenticated_client(user["access_token"])
-        # Silme yetkisi kontrolü: Liste sahibi mi, maddeyi ekleyen mi, yoksa can_delete izni var mı?
         list_res = supabase.table("lists").select("owner_id").eq("id", list_id).single().execute()
         is_owner = list_res.data and list_res.data["owner_id"] == user["id"]
 
@@ -231,3 +254,34 @@ async def delete_item(list_id: str, item_id: str, user: dict = Depends(get_curre
     except Exception as e:
         print("Error deleting item:", e)
     return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
+
+@router.post("/{list_id}/items/{item_id}/feedback")
+async def submit_feedback(
+    list_id: str,
+    item_id: str,
+    rating: int = Form(...),
+    comment: Optional[str] = Form(None),
+    user: dict = Depends(get_current_user_required)
+):
+    """Tamamlanan bir maddeye puan ve yorum ekleme veya güncelleme."""
+    try:
+        # Puanın 1-5 aralığında olduğunu doğrula
+        rating = max(1, min(5, rating))
+        supabase = get_authenticated_client(user["access_token"])
+        
+        # Madde tamamlanmış mı kontrol et
+        item_check = supabase.table("list_items").select("is_completed").eq("id", item_id).single().execute()
+        if not item_check.data or not item_check.data.get("is_completed"):
+            return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
+
+        # Upsert feedback
+        supabase.table("feedbacks").upsert({
+            "item_id": item_id,
+            "user_id": user["id"],
+            "rating": rating,
+            "comment": comment.strip() if comment else None
+        }, on_conflict="item_id, user_id").execute()
+    except Exception as e:
+        print("Error submitting feedback:", e)
+    return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
+

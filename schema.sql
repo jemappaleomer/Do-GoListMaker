@@ -147,13 +147,36 @@ CREATE POLICY "Users can update items in accessible lists" ON public.list_items 
     )
 );
 
-DROP POLICY IF EXISTS "Users can delete items in accessible lists" ON public.list_items;
-CREATE POLICY "Users can delete items in accessible lists" ON public.list_items FOR DELETE USING (
+-- Feedbacks RLS Politikaları
+DROP POLICY IF EXISTS "Users can view feedbacks of accessible list items" ON public.feedbacks;
+CREATE POLICY "Users can view feedbacks of accessible list items" ON public.feedbacks FOR SELECT USING (
     EXISTS (
-        SELECT 1 FROM public.lists WHERE id = public.list_items.list_id AND (
-            owner_id = auth.uid() OR EXISTS (
-                SELECT 1 FROM public.list_permissions WHERE list_id = public.lists.id AND user_id = auth.uid() AND can_delete = true
+        SELECT 1 FROM public.list_items
+        JOIN public.lists ON lists.id = list_items.list_id
+        WHERE list_items.id = feedbacks.item_id AND (
+            lists.owner_id = auth.uid() OR lists.is_shared = true OR EXISTS (
+                SELECT 1 FROM public.list_permissions WHERE list_permissions.list_id = lists.id AND list_permissions.user_id = auth.uid()
             )
         )
     )
 );
+
+DROP POLICY IF EXISTS "Users can insert feedback on completed items" ON public.feedbacks;
+CREATE POLICY "Users can insert feedback on completed items" ON public.feedbacks FOR INSERT WITH CHECK (
+    auth.uid() = user_id AND EXISTS (
+        SELECT 1 FROM public.list_items
+        JOIN public.lists ON lists.id = list_items.list_id
+        WHERE list_items.id = feedbacks.item_id AND list_items.is_completed = true AND (
+            lists.owner_id = auth.uid() OR lists.is_shared = true OR EXISTS (
+                SELECT 1 FROM public.list_permissions WHERE list_permissions.list_id = lists.id AND list_permissions.user_id = auth.uid()
+            )
+        )
+    )
+);
+
+DROP POLICY IF EXISTS "Users can update their own feedback" ON public.feedbacks;
+CREATE POLICY "Users can update their own feedback" ON public.feedbacks FOR UPDATE USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can delete their own feedback" ON public.feedbacks;
+CREATE POLICY "Users can delete their own feedback" ON public.feedbacks FOR DELETE USING (auth.uid() = user_id);
+
