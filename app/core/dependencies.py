@@ -16,19 +16,32 @@ async def get_current_user_optional(request: Request) -> Optional[Dict[str, Any]
         supabase = get_supabase_client()
         user_response = supabase.auth.get_user(token)
         if user_response and user_response.user:
-            user = user_response.user
+            user_id = str(user.id)
+            user_email = user.email or ""
             # Get profile info from user_metadata or profiles table
             username = user.user_metadata.get("username") if user.user_metadata else None
             if not username:
-                username = user.email.split("@")[0] if user.email else "User"
+                username = user_email.split("@")[0] if user_email else "user"
+            username = username.lower()
+
+            # Ensure profile exists in profiles table so foreign keys don't fail
+            try:
+                supabase.table("profiles").upsert({
+                    "id": user_id,
+                    "username": username,
+                    "email": user_email.lower()
+                }, on_conflict="id").execute()
+            except Exception as pe:
+                print("Profile sync warning:", pe)
 
             return {
-                "id": str(user.id),
-                "email": user.email,
+                "id": user_id,
+                "email": user_email,
                 "username": username,
                 "access_token": token
             }
-    except Exception:
+    except Exception as e:
+        print("Auth exception:", e)
         return None
     return None
 

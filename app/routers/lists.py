@@ -58,15 +58,37 @@ async def create_list(
 ):
     try:
         supabase = get_authenticated_client(user["access_token"])
-        supabase.table("lists").insert({
+        admin_client = get_supabase_client()
+
+        # Profilin profiles tablosunda var olduğunu kesinleştir (Foreign key hatasını engelle)
+        try:
+            admin_client.table("profiles").upsert({
+                "id": user["id"],
+                "username": user.get("username", "user"),
+                "email": user.get("email", "")
+            }, on_conflict="id").execute()
+        except Exception as pe:
+            print("Ensure profile error in create_list:", pe)
+
+        payload = {
             "title": title.strip(),
             "description": description.strip() if description else None,
             "owner_id": user["id"],
             "is_shared": is_shared
-        }).execute()
+        }
+
+        try:
+            supabase.table("lists").insert(payload).execute()
+        except Exception as insert_err:
+            print("Initial insert failed, trying with is_public fallback:", insert_err)
+            payload.pop("is_shared", None)
+            payload["is_public"] = is_shared
+            supabase.table("lists").insert(payload).execute()
+
         return RedirectResponse(url="/lists", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as e:
         print("Error creating list:", e)
+        # Hata durumunda da yönlendir ama logu bas
         return RedirectResponse(url="/lists", status_code=status.HTTP_303_SEE_OTHER)
 
 @router.get("/{list_id}", response_class=HTMLResponse)
