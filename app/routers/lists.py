@@ -99,14 +99,19 @@ async def get_list(list_id: str, request: Request, user: dict = Depends(get_curr
         client = get_authenticated_client(user["access_token"]) if user else get_supabase_client()
         
         # Liste detayını ve sahibinin profilini çek
-        list_res = client.table("lists").select("*, profiles:owner_id(username)").eq("id", list_id).single().execute()
-        list_data = list_res.data
+        list_data = None
+        try:
+            list_res = client.table("lists").select("*, profiles:owner_id(username)").eq("id", list_id).single().execute()
+            list_data = list_res.data
+        except Exception:
+            list_res = client.table("lists").select("*").eq("id", list_id).single().execute()
+            list_data = list_res.data
 
         if not list_data:
             return RedirectResponse(url="/lists" if user else "/auth/login", status_code=status.HTTP_302_FOUND)
 
         is_owner = user is not None and list_data.get("owner_id") == user["id"]
-        is_shared = list_data.get("is_shared", False)
+        is_shared = list_data.get("is_shared", False) or list_data.get("is_public", False)
 
         # Eğer liste gizliyse (private) ve bakan kişi sahibi değilse
         if not is_shared and not is_owner:
@@ -121,22 +126,30 @@ async def get_list(list_id: str, request: Request, user: dict = Depends(get_curr
         # Giriş yapmış ve sahibi olmayan kullanıcı paylaşılan listeyi açtığında otomatik list_permissions'a ekle (collaborator olsun)
         can_delete = is_owner
         if user and not is_owner:
-            perm_res = client.table("list_permissions").select("*").eq("list_id", list_id).eq("user_id", user["id"]).execute()
-            if not perm_res.data:
-                # Yeni katılımcı olarak ekle
-                client.table("list_permissions").insert({
-                    "list_id": list_id,
-                    "user_id": user["id"],
-                    "can_edit": True,
-                    "can_delete": False
-                }).execute()
-                can_delete = False
-            else:
-                can_delete = perm_res.data[0].get("can_delete", False)
+            try:
+                perm_res = client.table("list_permissions").select("*").eq("list_id", list_id).eq("user_id", user["id"]).execute()
+                if not perm_res.data:
+                    # Yeni katılımcı olarak ekle
+                    client.table("list_permissions").insert({
+                        "list_id": list_id,
+                        "user_id": user["id"],
+                        "permission_level": "edit"
+                    }).execute()
+            except Exception as pe:
+                print("Permission insert warning:", pe)
 
         # Liste maddelerini çek
-        items_res = client.table("list_items").select("*, profiles:created_by(username)").eq("list_id", list_id).order("created_at", desc=False).execute()
-        raw_items = items_res.data or []
+        raw_items = []
+        try:
+            items_res = client.table("list_items").select("*, profiles:created_by(username)").eq("list_id", list_id).order("created_at", desc=False).execute()
+            raw_items = items_res.data or []
+        except Exception:
+            try:
+                items_res = client.table("list_items").select("*").eq("list_id", list_id).order("created_at", desc=False).execute()
+                raw_items = items_res.data or []
+            except Exception as ie:
+                print("Error loading list items:", ie)
+
         completed_count = sum(1 for item in raw_items if item.get("is_completed"))
 
         # Her madde için Feedback (puan ve yorum) verilerini çek ve ortalama hesapla
@@ -147,8 +160,12 @@ async def get_list(list_id: str, request: Request, user: dict = Depends(get_curr
             try:
                 fb_res = client.table("feedbacks").select("*, profiles:user_id(username)").in_("item_id", item_ids).order("created_at", desc=True).execute()
                 all_feedbacks = fb_res.data or []
-            except Exception as fe:
-                print("Error loading feedbacks:", fe)
+            except Exception:
+                try:
+                    fb_res = client.table("feedbacks").select("*").in_("item_id", item_ids).order("created_at", desc=True).execute()
+                    all_feedbacks = fb_res.data or []
+                except Exception as fe:
+                    print("Error loading feedbacks:", fe)
 
         # Maddeleri feedback verileri ile zenginleştir
         for item in raw_items:
@@ -166,8 +183,15 @@ async def get_list(list_id: str, request: Request, user: dict = Depends(get_curr
         # Eğer liste sahibiyse katılımcıları listele
         collaborators = []
         if is_owner:
-            collab_res = client.table("list_permissions").select("id, user_id, can_delete, can_edit, profiles:user_id(username, email)").eq("list_id", list_id).execute()
-            collaborators = collab_res.data or []
+            try:
+                collab_res = client.table("list_permissions").select("id, user_id, profiles:user_id(username, email)").eq("list_id", list_id).execute()
+                collaborators = collab_res.data or []
+            except Exception:
+                try:
+                    collab_res = client.table("list_permissions").select("*").eq("list_id", list_id).execute()
+                    collaborators = collab_res.data or []
+                except Exception as ce:
+                    print("Error loading collaborators:", ce)
 
         return templates.TemplateResponse(
             request=request,
@@ -183,8 +207,10 @@ async def get_list(list_id: str, request: Request, user: dict = Depends(get_curr
             }
         )
     except Exception as e:
-        print("Error getting list:", e)
-        return RedirectResponse(url="/lists" if user else "/auth/login", status_code=status.HTTP_302_FOUND)
+        import urllib.parse
+        err_str = str(e)
+        print("Error getting list:", err_str)
+        return RedirectResponse(url=f"/lists?error={urllib.parse.quote(err_str)}", status_code=status.HTTP_302_FOUND)
 
 @router.post("/{list_id}/toggle-share")
 async def toggle_share(list_id: str, user: dict = Depends(get_current_user_required)):
