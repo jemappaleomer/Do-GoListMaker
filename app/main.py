@@ -9,8 +9,9 @@ from app.routers import auth, lists
 
 app = FastAPI(title="Do&Go List Maker", version="0.1.0")
 
-# Mount static files
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+# Mount static files safely
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # Setup Jinja2 templates
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))

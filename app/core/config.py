@@ -8,6 +8,7 @@ STATIC_DIR = BASE_DIR / "static"
 class Settings(BaseSettings):
     SUPABASE_URL: str = ""
     SUPABASE_KEY: str = ""
+    SUPABASE_ANON_KEY: str = ""
     SECRET_KEY: str = "default-secret-key-change-in-production"
     ENVIRONMENT: str = "development"
 
@@ -16,6 +17,10 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore"
     )
+
+    @property
+    def key(self) -> str:
+        return self.SUPABASE_KEY or self.SUPABASE_ANON_KEY
 
 settings = Settings()
 
