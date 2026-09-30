@@ -31,7 +31,13 @@
             </form>
         </div>
         {% endif %}
+    <!-- Error/Notice Display -->
+    {% if error %}
+    <div class="p-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl flex items-center space-x-2">
+        <i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0"></i>
+        <span>{{ error }}</span>
     </div>
+    {% endif %}
 
     <!-- Anonymous / Visitor Banner (Read-only mode) -->
     {% if not user %}

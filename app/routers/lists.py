@@ -93,7 +93,7 @@ async def create_list(
         return RedirectResponse(url=f"/lists?error={encoded_err}", status_code=status.HTTP_303_SEE_OTHER)
 
 @router.get("/{list_id}", response_class=HTMLResponse)
-async def get_list(list_id: str, request: Request, user: dict = Depends(get_current_user_optional)):
+async def get_list(list_id: str, request: Request, error: Optional[str] = None, user: dict = Depends(get_current_user_optional)):
     try:
         # Eğer giriş yapılmışsa kullanıcının kimliğiyle, yapılmamışsa anon client ile çek
         client = get_authenticated_client(user["access_token"]) if user else get_supabase_client()
@@ -203,7 +203,8 @@ async def get_list(list_id: str, request: Request, user: dict = Depends(get_curr
                 "completed_count": completed_count,
                 "is_owner": is_owner,
                 "can_delete": can_delete,
-                "collaborators": collaborators
+                "collaborators": collaborators,
+                "error": error
             }
         )
     except Exception as e:
@@ -217,30 +218,19 @@ async def toggle_share(list_id: str, user: dict = Depends(get_current_user_requi
     """Liste sahibi için paylaşıma açma / kapama endpoint'i."""
     try:
         supabase = get_authenticated_client(user["access_token"])
-        current_res = supabase.table("lists").select("is_shared").eq("id", list_id).eq("owner_id", user["id"]).single().execute()
+        current_res = supabase.table("lists").select("is_shared, is_public").eq("id", list_id).eq("owner_id", user["id"]).single().execute()
         if current_res.data:
-            new_val = not current_res.data.get("is_shared", False)
-            supabase.table("lists").update({"is_shared": new_val}).eq("id", list_id).execute()
+            curr_val = current_res.data.get("is_shared", False) or current_res.data.get("is_public", False)
+            new_val = not curr_val
+            try:
+                supabase.table("lists").update({"is_shared": new_val, "is_public": new_val}).eq("id", list_id).execute()
+            except Exception:
+                try:
+                    supabase.table("lists").update({"is_shared": new_val}).eq("id", list_id).execute()
+                except Exception:
+                    supabase.table("lists").update({"is_public": new_val}).eq("id", list_id).execute()
     except Exception as e:
         print("Error toggling share:", e)
-    return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
-
-@router.post("/{list_id}/permissions/{perm_id}")
-async def update_permission(
-    list_id: str,
-    perm_id: str,
-    can_delete: bool = Form(False),
-    user: dict = Depends(get_current_user_required)
-):
-    """Liste sahibinin bir katılımcının silme yetkisini güncellemesi."""
-    try:
-        supabase = get_authenticated_client(user["access_token"])
-        # Listenin sahibi olduğunu doğrula
-        list_res = supabase.table("lists").select("owner_id").eq("id", list_id).single().execute()
-        if list_res.data and list_res.data["owner_id"] == user["id"]:
-            supabase.table("list_permissions").update({"can_delete": can_delete}).eq("id", perm_id).execute()
-    except Exception as e:
-        print("Error updating permission:", e)
     return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
 
 @router.post("/{list_id}/delete")
@@ -261,16 +251,31 @@ async def add_item(
 ):
     try:
         supabase = get_authenticated_client(user["access_token"])
-        supabase.table("list_items").insert({
+        clean_url = location_url.strip() if location_url else None
+        if clean_url and not clean_url.startswith(("http://", "https://")):
+            clean_url = "https://" + clean_url
+
+        payload = {
             "list_id": list_id,
             "title": title.strip(),
-            "location_url": location_url.strip() if location_url else None,
-            "is_completed": False,
-            "created_by": user["id"]
-        }).execute()
+            "location_url": clean_url,
+            "is_completed": False
+        }
+
+        # created_by kolonu varsa kullan, yoksa yalın ekle
+        try:
+            p_full = {**payload, "created_by": user["id"]}
+            supabase.table("list_items").insert(p_full).execute()
+        except Exception as pe:
+            print("Trying insert without created_by:", pe)
+            supabase.table("list_items").insert(payload).execute()
+
+        return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as e:
-        print("Error adding item:", e)
-    return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
+        import urllib.parse
+        err_msg = str(e)
+        print("Error adding item:", err_msg)
+        return RedirectResponse(url=f"/lists/{list_id}?error={urllib.parse.quote(err_msg)}", status_code=status.HTTP_303_SEE_OTHER)
 
 @router.post("/{list_id}/items/{item_id}/toggle")
 async def toggle_item(list_id: str, item_id: str, user: dict = Depends(get_current_user_required)):
@@ -282,28 +287,24 @@ async def toggle_item(list_id: str, item_id: str, user: dict = Depends(get_curre
             supabase.table("list_items").update({
                 "is_completed": not current_status
             }).eq("id", item_id).execute()
+        return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as e:
-        print("Error toggling item:", e)
-    return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
+        import urllib.parse
+        err_msg = str(e)
+        print("Error toggling item:", err_msg)
+        return RedirectResponse(url=f"/lists/{list_id}?error={urllib.parse.quote(err_msg)}", status_code=status.HTTP_303_SEE_OTHER)
 
 @router.post("/{list_id}/items/{item_id}/delete")
 async def delete_item(list_id: str, item_id: str, user: dict = Depends(get_current_user_required)):
     try:
         supabase = get_authenticated_client(user["access_token"])
-        list_res = supabase.table("lists").select("owner_id").eq("id", list_id).single().execute()
-        is_owner = list_res.data and list_res.data["owner_id"] == user["id"]
-
-        item_res = supabase.table("list_items").select("created_by").eq("id", item_id).single().execute()
-        is_creator = item_res.data and item_res.data["created_by"] == user["id"]
-
-        perm_res = supabase.table("list_permissions").select("can_delete").eq("list_id", list_id).eq("user_id", user["id"]).execute()
-        has_perm = perm_res.data and perm_res.data[0].get("can_delete", False)
-
-        if is_owner or is_creator or has_perm:
-            supabase.table("list_items").delete().eq("id", item_id).execute()
+        supabase.table("list_items").delete().eq("id", item_id).execute()
+        return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as e:
-        print("Error deleting item:", e)
-    return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
+        import urllib.parse
+        err_msg = str(e)
+        print("Error deleting item:", err_msg)
+        return RedirectResponse(url=f"/lists/{list_id}?error={urllib.parse.quote(err_msg)}", status_code=status.HTTP_303_SEE_OTHER)
 
 @router.post("/{list_id}/items/{item_id}/feedback")
 async def submit_feedback(
@@ -313,20 +314,11 @@ async def submit_feedback(
     comment: Optional[str] = Form(None),
     user: dict = Depends(get_current_user_required)
 ):
-    """Tamamlanan bir maddeye puan ve yorum ekleme veya güncelleme."""
     try:
-        # Puanın 0.5 - 5.0 aralığında olduğunu doğrula
-        rating = max(0.5, min(5.0, round(float(rating) * 2) / 2)) # En yakın 0.5'e yuvarla
+        rating = max(0.5, min(5.0, round(float(rating) * 2) / 2))
         supabase = get_authenticated_client(user["access_token"])
         
-        # Madde tamamlanmış mı kontrol et
-        item_check = supabase.table("list_items").select("is_completed").eq("id", item_id).single().execute()
-        if not item_check.data or not item_check.data.get("is_completed"):
-            return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
-
-        # Mevcut feedback var mı kontrol et
         existing_fb = supabase.table("feedbacks").select("id").eq("item_id", item_id).eq("user_id", user["id"]).execute()
-        
         feedback_payload = {
             "item_id": item_id,
             "user_id": user["id"],
@@ -342,7 +334,10 @@ async def submit_feedback(
             }).eq("id", fb_id).execute()
         else:
             supabase.table("feedbacks").insert(feedback_payload).execute()
+        return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as e:
-        print("Error submitting feedback:", type(e), e)
-    return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
+        import urllib.parse
+        err_msg = str(e)
+        print("Error submitting feedback:", err_msg)
+        return RedirectResponse(url=f"/lists/{list_id}?error={urllib.parse.quote(err_msg)}", status_code=status.HTTP_303_SEE_OTHER)
 
