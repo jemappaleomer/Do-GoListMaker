@@ -28,7 +28,7 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
     if exc.status_code == status.HTTP_401_UNAUTHORIZED:
         # Oturum düşmüşse JSON hata basmak yerine doğrudan login sayfasına yönlendir
         response = RedirectResponse(url="/auth/login", status_code=status.HTTP_302_FOUND)
-        response.delete_cookie(key="sb_access_token")
+        response.delete_cookie(key="sb_access_token", path="/")
         return response
     return HTMLResponse(content=f"<h1>Hata: {exc.detail}</h1>", status_code=exc.status_code)
 

@@ -43,14 +43,16 @@ async def login_action(
         
         access_token = auth_response.session.access_token
         response = RedirectResponse(url="/lists", status_code=status.HTTP_303_SEE_OTHER)
-        # Store access token in HttpOnly cookie
+        # Store access token in HttpOnly cookie with path="/" and secure on https
+        is_https = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
         response.set_cookie(
             key="sb_access_token",
             value=access_token,
             httponly=True,
             max_age=60 * 60 * 24 * 7, # 7 days
             samesite="lax",
-            secure=False # Set to True in production with HTTPS
+            secure=is_https,
+            path="/"
         )
         return response
 
@@ -131,13 +133,15 @@ async def register_action(
         # Otomatik oturum açma veya e-posta onay kontrolü
         if auth_response.session:
             response = RedirectResponse(url="/lists", status_code=status.HTTP_303_SEE_OTHER)
+            is_https = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
             response.set_cookie(
                 key="sb_access_token",
                 value=auth_response.session.access_token,
                 httponly=True,
                 max_age=60 * 60 * 24 * 7,
                 samesite="lax",
-                secure=False
+                secure=is_https,
+                path="/"
             )
             return response
         else:
@@ -168,13 +172,15 @@ async def auth_callback(request: Request, code: Optional[str] = None):
             res = supabase.auth.exchange_code_for_session({"auth_code": code})
             if res and res.session:
                 response = RedirectResponse(url="/lists", status_code=status.HTTP_303_SEE_OTHER)
+                is_https = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
                 response.set_cookie(
                     key="sb_access_token",
                     value=res.session.access_token,
                     httponly=True,
                     max_age=60 * 60 * 24 * 7,
                     samesite="lax",
-                    secure=False
+                    secure=is_https,
+                    path="/"
                 )
                 return response
         except Exception as e:
@@ -186,6 +192,6 @@ async def auth_callback(request: Request, code: Optional[str] = None):
 @router.get("/logout")
 async def logout():
     response = RedirectResponse(url="/auth/login", status_code=status.HTTP_302_FOUND)
-    response.delete_cookie(key="sb_access_token")
+    response.delete_cookie(key="sb_access_token", path="/")
     return response
 
