@@ -10,7 +10,7 @@ router = APIRouter(prefix="/lists", tags=["lists"])
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 @router.get("", response_class=HTMLResponse)
-async def list_index(request: Request, user: dict = Depends(get_current_user_optional)):
+async def list_index(request: Request, error: Optional[str] = None, user: dict = Depends(get_current_user_optional)):
     if not user:
         return RedirectResponse(url="/auth/login", status_code=status.HTTP_302_FOUND)
 
@@ -44,7 +44,7 @@ async def list_index(request: Request, user: dict = Depends(get_current_user_opt
             "user": user,
             "my_lists": my_lists,
             "shared_lists": shared_lists,
-            "error": None
+            "error": error
         }
     )
 
@@ -85,9 +85,12 @@ async def create_list(
 
         return RedirectResponse(url="/lists", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as e:
-        print("Error creating list:", e)
-        # Hata durumunda da yönlendir ama logu bas
-        return RedirectResponse(url="/lists", status_code=status.HTTP_303_SEE_OTHER)
+        import urllib.parse
+        err_str = str(e)
+        print("Error creating list:", err_str)
+        # Hata durumunu ekranda açıkça göster
+        encoded_err = urllib.parse.quote(err_str)
+        return RedirectResponse(url=f"/lists?error={encoded_err}", status_code=status.HTTP_303_SEE_OTHER)
 
 @router.get("/{list_id}", response_class=HTMLResponse)
 async def get_list(list_id: str, request: Request, user: dict = Depends(get_current_user_optional)):
