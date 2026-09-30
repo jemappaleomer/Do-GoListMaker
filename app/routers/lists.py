@@ -58,11 +58,9 @@ async def create_list(
 ):
     try:
         supabase = get_authenticated_client(user["access_token"])
-        admin_client = get_supabase_client()
-
         # Profilin profiles tablosunda var olduğunu kesinleştir (Foreign key hatasını engelle)
         try:
-            admin_client.table("profiles").upsert({
+            supabase.table("profiles").upsert({
                 "id": user["id"],
                 "username": user.get("username", "user"),
                 "email": user.get("email", "")

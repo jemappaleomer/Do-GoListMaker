@@ -18,21 +18,11 @@ async def get_current_user_optional(request: Request) -> Optional[Dict[str, Any]
         if user_response and user_response.user:
             user_id = str(user.id)
             user_email = user.email or ""
-            # Get profile info from user_metadata or profiles table
+            # Get profile info from user_metadata
             username = user.user_metadata.get("username") if user.user_metadata else None
             if not username:
                 username = user_email.split("@")[0] if user_email else "user"
             username = username.lower()
-
-            # Ensure profile exists in profiles table so foreign keys don't fail
-            try:
-                supabase.table("profiles").upsert({
-                    "id": user_id,
-                    "username": username,
-                    "email": user_email.lower()
-                }, on_conflict="id").execute()
-            except Exception as pe:
-                print("Profile sync warning:", pe)
 
             return {
                 "id": user_id,
