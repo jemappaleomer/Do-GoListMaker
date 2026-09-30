@@ -16,10 +16,11 @@ async def get_current_user_optional(request: Request) -> Optional[Dict[str, Any]
         supabase = get_supabase_client()
         user_response = supabase.auth.get_user(token)
         if user_response and user_response.user:
-            user_id = str(user.id)
-            user_email = user.email or ""
+            u = user_response.user
+            user_id = str(u.id)
+            user_email = u.email or ""
             # Get profile info from user_metadata
-            username = user.user_metadata.get("username") if user.user_metadata else None
+            username = u.user_metadata.get("username") if u.user_metadata else None
             if not username:
                 username = user_email.split("@")[0] if user_email else "user"
             username = username.lower()
