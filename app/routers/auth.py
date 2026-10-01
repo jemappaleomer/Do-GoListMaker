@@ -59,11 +59,15 @@ async def login_action(
     except Exception as e:
         error_msg = str(e)
         if "Invalid login credentials" in error_msg:
-            error_msg = "E-posta veya parola hatalı."
+            display_err = "E-posta veya parola hatalı."
+        elif "Email not confirmed" in error_msg:
+            display_err = "Lütfen önce e-posta adresinizi onaylayın."
+        else:
+            display_err = "Giriş yapılırken bir hata oluştu. Lütfen tekrar deneyin."
         return templates.TemplateResponse(
             request=request,
             name="auth/login.html",
-            context={"user": None, "error": error_msg},
+            context={"user": None, "error": display_err},
             status_code=status.HTTP_400_BAD_REQUEST
         )
 
@@ -155,11 +159,15 @@ async def register_action(
     except Exception as e:
         error_msg = str(e)
         if "User already registered" in error_msg:
-            error_msg = "Bu e-posta adresiyle zaten kayıtlı bir hesap var."
+            display_err = "Bu e-posta adresiyle zaten kayıtlı bir hesap var."
+        elif "Password should be at least" in error_msg:
+            display_err = "Parola en az 6 karakter olmalıdır."
+        else:
+            display_err = "Kayıt işlemi sırasında bir hata oluştu. Lütfen bilgilerinizi kontrol edin."
         return templates.TemplateResponse(
             request=request,
             name="auth/register.html",
-            context={"user": None, "error": error_msg},
+            context={"user": None, "error": display_err},
             status_code=status.HTTP_400_BAD_REQUEST
         )
 

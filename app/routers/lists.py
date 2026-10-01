@@ -1,13 +1,41 @@
+import logging
+import urllib.parse
+from urllib.parse import urlparse
 from typing import Optional
 from fastapi import APIRouter, Request, Form, Depends, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+
 from app.core.config import TEMPLATES_DIR
 from app.core.dependencies import get_current_user_required, get_current_user_optional
 from app.core.supabase import get_authenticated_client, get_supabase_client
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/lists", tags=["lists"])
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+
+def sanitize_url(raw_url: Optional[str]) -> Optional[str]:
+    """Sadece güvenli http/https şemalarını kabul eder, XSS/javascript enjeksiyonlarını engeller."""
+    if not raw_url:
+        return None
+    clean = raw_url.strip()
+    if not clean:
+        return None
+    parsed = urlparse(clean)
+    if not parsed.scheme:
+        clean = "https://" + clean
+        parsed = urlparse(clean)
+    if parsed.scheme.lower() not in ("http", "https"):
+        return None
+    return clean
+
+
+def safe_error_param(msg: str) -> str:
+    """Kullanıcı dostu hata mesajını güvenli bir şekilde URL için encode eder."""
+    return urllib.parse.quote(msg)
+
 
 @router.get("", response_class=HTMLResponse)
 async def list_index(request: Request, error: Optional[str] = None, user: dict = Depends(get_current_user_optional)):
@@ -30,12 +58,11 @@ async def list_index(request: Request, error: Optional[str] = None, user: dict =
             for item in perm_res.data:
                 if item.get("lists"):
                     l_data = item["lists"]
-                    # Kendi listesi değilse paylaşılanlar listesine ekle
                     if l_data.get("owner_id") != user["id"]:
                         l_data["can_delete_perm"] = item.get("can_delete", False)
                         shared_lists.append(l_data)
     except Exception as e:
-        print("Error fetching lists:", e)
+        logger.exception("Error fetching lists: %s", e)
 
     return templates.TemplateResponse(
         request=request,
@@ -48,6 +75,7 @@ async def list_index(request: Request, error: Optional[str] = None, user: dict =
         }
     )
 
+
 @router.post("", response_class=HTMLResponse)
 async def create_list(
     request: Request,
@@ -57,8 +85,13 @@ async def create_list(
     user: dict = Depends(get_current_user_required)
 ):
     try:
+        clean_title = title.strip()
+        if not clean_title:
+            return RedirectResponse(url=f"/lists?error={safe_error_param('Liste başlığı boş olamaz.')}", status_code=status.HTTP_303_SEE_OTHER)
+
         supabase = get_authenticated_client(user["access_token"])
-        # Profilin profiles tablosunda var olduğunu kesinleştir (Foreign key hatasını engelle)
+        
+        # Profilin profiles tablosunda var olduğunu kesinleştir
         try:
             supabase.table("profiles").upsert({
                 "id": user["id"],
@@ -66,10 +99,10 @@ async def create_list(
                 "email": user.get("email", "")
             }, on_conflict="id").execute()
         except Exception as pe:
-            print("Ensure profile error in create_list:", pe)
+            logger.warning("Ensure profile error in create_list: %s", pe)
 
         payload = {
-            "title": title.strip(),
+            "title": clean_title,
             "description": description.strip() if description else None,
             "owner_id": user["id"],
             "is_shared": is_shared
@@ -78,27 +111,22 @@ async def create_list(
         try:
             supabase.table("lists").insert(payload).execute()
         except Exception as insert_err:
-            print("Initial insert failed, trying with is_public fallback:", insert_err)
+            logger.info("Initial insert failed, trying with is_public fallback: %s", insert_err)
             payload.pop("is_shared", None)
             payload["is_public"] = is_shared
             supabase.table("lists").insert(payload).execute()
 
         return RedirectResponse(url="/lists", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as e:
-        import urllib.parse
-        err_str = str(e)
-        print("Error creating list:", err_str)
-        # Hata durumunu ekranda açıkça göster
-        encoded_err = urllib.parse.quote(err_str)
-        return RedirectResponse(url=f"/lists?error={encoded_err}", status_code=status.HTTP_303_SEE_OTHER)
+        logger.exception("Error creating list: %s", e)
+        return RedirectResponse(url=f"/lists?error={safe_error_param('Liste oluşturulurken bir hata oluştu.')}", status_code=status.HTTP_303_SEE_OTHER)
+
 
 @router.get("/{list_id}", response_class=HTMLResponse)
 async def get_list(list_id: str, request: Request, error: Optional[str] = None, user: dict = Depends(get_current_user_optional)):
     try:
-        # Eğer giriş yapılmışsa kullanıcının kimliğiyle, yapılmamışsa anon client ile çek
         client = get_authenticated_client(user["access_token"]) if user else get_supabase_client()
         
-        # Liste detayını ve sahibinin profilini çek
         list_data = None
         try:
             list_res = client.table("lists").select("*, profiles:owner_id(username)").eq("id", list_id).single().execute()
@@ -113,9 +141,8 @@ async def get_list(list_id: str, request: Request, error: Optional[str] = None, 
         is_owner = user is not None and list_data.get("owner_id") == user["id"]
         is_shared = list_data.get("is_shared", False) or list_data.get("is_public", False)
 
-        # Eğer liste gizliyse (private) ve bakan kişi sahibi değilse
+        # Liste gizliyse ve bakan kişi sahibi değilse
         if not is_shared and not is_owner:
-            # Belki özel izin verilmiştir?
             if user:
                 perm_check = client.table("list_permissions").select("id").eq("list_id", list_id).eq("user_id", user["id"]).execute()
                 if not perm_check.data or len(perm_check.data) == 0:
@@ -123,20 +150,21 @@ async def get_list(list_id: str, request: Request, error: Optional[str] = None, 
             else:
                 return RedirectResponse(url="/auth/login", status_code=status.HTTP_302_FOUND)
 
-        # Giriş yapmış ve sahibi olmayan kullanıcı paylaşılan listeyi açtığında otomatik list_permissions'a ekle (collaborator olsun)
+        # Ortak listeye ilk kez katılan kullanıcıyı kaydet
         can_delete = is_owner
         if user and not is_owner:
             try:
                 perm_res = client.table("list_permissions").select("*").eq("list_id", list_id).eq("user_id", user["id"]).execute()
                 if not perm_res.data:
-                    # Yeni katılımcı olarak ekle
                     client.table("list_permissions").insert({
                         "list_id": list_id,
                         "user_id": user["id"],
                         "permission_level": "edit"
                     }).execute()
+                else:
+                    can_delete = perm_res.data[0].get("can_delete", False)
             except Exception as pe:
-                print("Permission insert warning:", pe)
+                logger.warning("Permission register warning: %s", pe)
 
         # Liste maddelerini çek
         raw_items = []
@@ -148,11 +176,11 @@ async def get_list(list_id: str, request: Request, error: Optional[str] = None, 
                 items_res = client.table("list_items").select("*").eq("list_id", list_id).order("created_at", desc=False).execute()
                 raw_items = items_res.data or []
             except Exception as ie:
-                print("Error loading list items:", ie)
+                logger.warning("Error loading list items: %s", ie)
 
         completed_count = sum(1 for item in raw_items if item.get("is_completed"))
 
-        # Her madde için Feedback (puan ve yorum) verilerini çek ve ortalama hesapla
+        # Feedback ve puanları çek
         items = []
         item_ids = [item["id"] for item in raw_items]
         all_feedbacks = []
@@ -165,9 +193,8 @@ async def get_list(list_id: str, request: Request, error: Optional[str] = None, 
                     fb_res = client.table("feedbacks").select("*").in_("item_id", item_ids).order("created_at", desc=True).execute()
                     all_feedbacks = fb_res.data or []
                 except Exception as fe:
-                    print("Error loading feedbacks:", fe)
+                    logger.warning("Error loading feedbacks: %s", fe)
 
-        # Maddeleri feedback verileri ile zenginleştir
         for item in raw_items:
             item_fbs = [fb for fb in all_feedbacks if fb.get("item_id") == item["id"]]
             ratings = [fb["rating"] for fb in item_fbs if fb.get("rating") is not None]
@@ -180,7 +207,7 @@ async def get_list(list_id: str, request: Request, error: Optional[str] = None, 
             item["user_feedback"] = user_feedback
             items.append(item)
 
-        # Eğer liste sahibiyse katılımcıları listele
+        # Katılımcıları listele
         collaborators = []
         if is_owner:
             try:
@@ -191,7 +218,7 @@ async def get_list(list_id: str, request: Request, error: Optional[str] = None, 
                     collab_res = client.table("list_permissions").select("*").eq("list_id", list_id).execute()
                     collaborators = collab_res.data or []
                 except Exception as ce:
-                    print("Error loading collaborators:", ce)
+                    logger.warning("Error loading collaborators: %s", ce)
 
         return templates.TemplateResponse(
             request=request,
@@ -208,10 +235,9 @@ async def get_list(list_id: str, request: Request, error: Optional[str] = None, 
             }
         )
     except Exception as e:
-        import urllib.parse
-        err_str = str(e)
-        print("Error getting list:", err_str)
-        return RedirectResponse(url=f"/lists?error={urllib.parse.quote(err_str)}", status_code=status.HTTP_302_FOUND)
+        logger.exception("Error getting list: %s", e)
+        return RedirectResponse(url=f"/lists?error={safe_error_param('Liste yüklenirken bir hata oluştu.')}", status_code=status.HTTP_302_FOUND)
+
 
 @router.post("/{list_id}/toggle-share")
 async def toggle_share(list_id: str, user: dict = Depends(get_current_user_required)):
@@ -230,8 +256,9 @@ async def toggle_share(list_id: str, user: dict = Depends(get_current_user_requi
                 except Exception:
                     supabase.table("lists").update({"is_public": new_val}).eq("id", list_id).execute()
     except Exception as e:
-        print("Error toggling share:", e)
+        logger.exception("Error toggling share: %s", e)
     return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
+
 
 @router.post("/{list_id}/delete")
 async def delete_list(list_id: str, user: dict = Depends(get_current_user_required)):
@@ -239,8 +266,9 @@ async def delete_list(list_id: str, user: dict = Depends(get_current_user_requir
         supabase = get_authenticated_client(user["access_token"])
         supabase.table("lists").delete().eq("id", list_id).eq("owner_id", user["id"]).execute()
     except Exception as e:
-        print("Error deleting list:", e)
+        logger.exception("Error deleting list: %s", e)
     return RedirectResponse(url="/lists", status_code=status.HTTP_303_SEE_OTHER)
+
 
 @router.post("/{list_id}/items")
 async def add_item(
@@ -250,15 +278,17 @@ async def add_item(
     user: dict = Depends(get_current_user_required)
 ):
     try:
-        supabase = get_authenticated_client(user["access_token"])
-        clean_url = location_url.strip() if location_url else None
-        if clean_url and not clean_url.startswith(("http://", "https://")):
-            clean_url = "https://" + clean_url
+        clean_title = title.strip()
+        if not clean_title:
+            return RedirectResponse(url=f"/lists/{list_id}?error={safe_error_param('Öğe başlığı boş olamaz.')}", status_code=status.HTTP_303_SEE_OTHER)
 
+        safe_loc_url = sanitize_url(location_url)
+
+        supabase = get_authenticated_client(user["access_token"])
         payload = {
             "list_id": list_id,
-            "title": title.strip(),
-            "location_url": clean_url,
+            "title": clean_title,
+            "location_url": safe_loc_url,
             "is_completed": False
         }
 
@@ -267,44 +297,61 @@ async def add_item(
             p_full = {**payload, "created_by": user["id"]}
             supabase.table("list_items").insert(p_full).execute()
         except Exception as pe:
-            print("Trying insert without created_by:", pe)
+            logger.info("Trying insert without created_by: %s", pe)
             supabase.table("list_items").insert(payload).execute()
 
         return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as e:
-        import urllib.parse
-        err_msg = str(e)
-        print("Error adding item:", err_msg)
-        return RedirectResponse(url=f"/lists/{list_id}?error={urllib.parse.quote(err_msg)}", status_code=status.HTTP_303_SEE_OTHER)
+        logger.exception("Error adding item: %s", e)
+        return RedirectResponse(url=f"/lists/{list_id}?error={safe_error_param('Öğe eklenirken bir hata oluştu.')}", status_code=status.HTTP_303_SEE_OTHER)
+
 
 @router.post("/{list_id}/items/{item_id}/toggle")
 async def toggle_item(list_id: str, item_id: str, user: dict = Depends(get_current_user_required)):
     try:
         supabase = get_authenticated_client(user["access_token"])
-        item_res = supabase.table("list_items").select("is_completed").eq("id", item_id).single().execute()
+        item_res = supabase.table("list_items").select("is_completed").eq("id", item_id).eq("list_id", list_id).single().execute()
         if item_res.data:
             current_status = item_res.data.get("is_completed", False)
             supabase.table("list_items").update({
                 "is_completed": not current_status
-            }).eq("id", item_id).execute()
+            }).eq("id", item_id).eq("list_id", list_id).execute()
         return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as e:
-        import urllib.parse
-        err_msg = str(e)
-        print("Error toggling item:", err_msg)
-        return RedirectResponse(url=f"/lists/{list_id}?error={urllib.parse.quote(err_msg)}", status_code=status.HTTP_303_SEE_OTHER)
+        logger.exception("Error toggling item: %s", e)
+        return RedirectResponse(url=f"/lists/{list_id}?error={safe_error_param('Öğe durumu güncellenirken bir hata oluştu.')}", status_code=status.HTTP_303_SEE_OTHER)
+
 
 @router.post("/{list_id}/items/{item_id}/delete")
 async def delete_item(list_id: str, item_id: str, user: dict = Depends(get_current_user_required)):
+    """IDOR / BOLA koruması: Sadece liste sahibi veya silme yetkili ortak silebilir."""
     try:
         supabase = get_authenticated_client(user["access_token"])
-        supabase.table("list_items").delete().eq("id", item_id).execute()
+        
+        # 1. Listenin sahibini kontrol et
+        list_res = supabase.table("lists").select("owner_id").eq("id", list_id).single().execute()
+        if not list_res.data:
+            return RedirectResponse(url="/lists", status_code=status.HTTP_303_SEE_OTHER)
+
+        is_owner = list_res.data.get("owner_id") == user["id"]
+        
+        # 2. Sahip değilse katılımcı silme yetkisini doğrula
+        has_perm = False
+        if not is_owner:
+            perm_res = supabase.table("list_permissions").select("can_delete").eq("list_id", list_id).eq("user_id", user["id"]).execute()
+            has_perm = bool(perm_res.data and perm_res.data[0].get("can_delete", False))
+
+        if not is_owner and not has_perm:
+            logger.warning("Unauthorized item deletion attempt by user %s on list %s", user["id"], list_id)
+            return RedirectResponse(url=f"/lists/{list_id}?error={safe_error_param('Bu öğeyi silme yetkiniz bulunmuyor.')}", status_code=status.HTTP_303_SEE_OTHER)
+
+        # Doğrulanmış silme
+        supabase.table("list_items").delete().eq("id", item_id).eq("list_id", list_id).execute()
         return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as e:
-        import urllib.parse
-        err_msg = str(e)
-        print("Error deleting item:", err_msg)
-        return RedirectResponse(url=f"/lists/{list_id}?error={urllib.parse.quote(err_msg)}", status_code=status.HTTP_303_SEE_OTHER)
+        logger.exception("Error deleting item: %s", e)
+        return RedirectResponse(url=f"/lists/{list_id}?error={safe_error_param('Öğe silinirken bir hata oluştu.')}", status_code=status.HTTP_303_SEE_OTHER)
+
 
 @router.post("/{list_id}/items/{item_id}/feedback")
 async def submit_feedback(
@@ -334,10 +381,8 @@ async def submit_feedback(
             }).eq("id", fb_id).execute()
         else:
             supabase.table("feedbacks").insert(feedback_payload).execute()
+            
         return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as e:
-        import urllib.parse
-        err_msg = str(e)
-        print("Error submitting feedback:", err_msg)
-        return RedirectResponse(url=f"/lists/{list_id}?error={urllib.parse.quote(err_msg)}", status_code=status.HTTP_303_SEE_OTHER)
-
+        logger.exception("Error submitting feedback: %s", e)
+        return RedirectResponse(url=f"/lists/{list_id}?error={safe_error_param('Puan kaydedilirken bir sorun oluştu.')}", status_code=status.HTTP_303_SEE_OTHER)

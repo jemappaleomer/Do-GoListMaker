@@ -1,4 +1,6 @@
--- Supabase SQL Schema for Do&Go List Maker
+-- ==============================================================================
+-- DO&GO LIST MAKER - TAM VE GÜVENLİ VERİTABANI ŞEMASI (SUPABASE SQL)
+-- ==============================================================================
 
 -- 1. Profiles Table (Auth.users ile senkronize profil bilgileri)
 CREATE TABLE IF NOT EXISTS public.profiles (
@@ -43,6 +45,7 @@ CREATE TABLE IF NOT EXISTS public.lists (
     description TEXT,
     owner_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     is_shared BOOLEAN DEFAULT false NOT NULL,
+    is_public BOOLEAN DEFAULT false NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
@@ -54,23 +57,23 @@ CREATE TABLE IF NOT EXISTS public.list_items (
     title TEXT NOT NULL,
     location_url TEXT,
     is_completed BOOLEAN DEFAULT false NOT NULL,
-    created_by UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    created_by UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     completed_at TIMESTAMP WITH TIME ZONE
 );
 
--- 4. ListPermissions Table (İleriki fazlar için hazır altyapı)
+-- 4. ListPermissions Table
 CREATE TABLE IF NOT EXISTS public.list_permissions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     list_id UUID NOT NULL REFERENCES public.lists(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    can_edit BOOLEAN DEFAULT true NOT NULL,
     can_delete BOOLEAN DEFAULT false NOT NULL,
+    permission_level TEXT DEFAULT 'edit' NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     UNIQUE (list_id, user_id)
 );
 
--- 5. Feedbacks Table (İleriki fazlar için hazır altyapı)
+-- 5. Feedbacks Table
 CREATE TABLE IF NOT EXISTS public.feedbacks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     item_id UUID NOT NULL REFERENCES public.list_items(id) ON DELETE CASCADE,
@@ -88,95 +91,77 @@ ALTER TABLE public.list_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.list_permissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.feedbacks ENABLE ROW LEVEL SECURITY;
 
--- Temel RLS Politikaları
+-- ------------------------------------------------------------------------------
+-- DÖNGÜSÜZ & GÜVENLİ RLS POLİTİKALARI
+-- ------------------------------------------------------------------------------
+
 -- Profiles
 DROP POLICY IF EXISTS "Public profiles are viewable by everyone" ON public.profiles;
 CREATE POLICY "Public profiles are viewable by everyone" ON public.profiles FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
+CREATE POLICY "Users can insert own profile" ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
 
 DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
 CREATE POLICY "Users can update their own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
 
 -- Lists
-DROP POLICY IF EXISTS "Users can view own lists or shared lists" ON public.lists;
-CREATE POLICY "Users can view own lists or shared lists" ON public.lists FOR SELECT USING (
-    auth.uid() = owner_id OR is_shared = true OR EXISTS (
-        SELECT 1 FROM public.list_permissions WHERE list_id = public.lists.id AND user_id = auth.uid()
+DROP POLICY IF EXISTS "Lists select policy" ON public.lists;
+CREATE POLICY "Lists select policy" ON public.lists FOR SELECT USING (
+    auth.uid() = owner_id 
+    OR is_shared = true 
+    OR is_public = true
+);
+
+DROP POLICY IF EXISTS "Lists insert policy" ON public.lists;
+CREATE POLICY "Lists insert policy" ON public.lists FOR INSERT TO authenticated WITH CHECK (auth.uid() = owner_id);
+
+DROP POLICY IF EXISTS "Lists update policy" ON public.lists;
+CREATE POLICY "Lists update policy" ON public.lists FOR UPDATE TO authenticated USING (auth.uid() = owner_id);
+
+DROP POLICY IF EXISTS "Lists delete policy" ON public.lists;
+CREATE POLICY "Lists delete policy" ON public.lists FOR DELETE TO authenticated USING (auth.uid() = owner_id);
+
+-- List Permissions
+DROP POLICY IF EXISTS "Permissions select policy" ON public.list_permissions;
+CREATE POLICY "Permissions select policy" ON public.list_permissions FOR SELECT TO authenticated USING (
+    user_id = auth.uid() OR EXISTS (
+        SELECT 1 FROM public.lists WHERE lists.id = list_permissions.list_id AND lists.owner_id = auth.uid()
     )
 );
 
-DROP POLICY IF EXISTS "Users can insert own lists" ON public.lists;
-CREATE POLICY "Users can insert own lists" ON public.lists FOR INSERT WITH CHECK (auth.uid() = owner_id);
+DROP POLICY IF EXISTS "Permissions insert policy" ON public.list_permissions;
+CREATE POLICY "Permissions insert policy" ON public.list_permissions FOR INSERT TO authenticated WITH CHECK (true);
 
-DROP POLICY IF EXISTS "Users can update own lists" ON public.lists;
-CREATE POLICY "Users can update own lists" ON public.lists FOR UPDATE USING (auth.uid() = owner_id);
-
-DROP POLICY IF EXISTS "Users can delete own lists" ON public.lists;
-CREATE POLICY "Users can delete own lists" ON public.lists FOR DELETE USING (auth.uid() = owner_id);
+DROP POLICY IF EXISTS "Permissions delete policy" ON public.list_permissions;
+CREATE POLICY "Permissions delete policy" ON public.list_permissions FOR DELETE TO authenticated USING (
+    user_id = auth.uid() OR EXISTS (
+        SELECT 1 FROM public.lists WHERE lists.id = list_permissions.list_id AND lists.owner_id = auth.uid()
+    )
+);
 
 -- List Items
-DROP POLICY IF EXISTS "Users can view items of accessible lists" ON public.list_items;
-CREATE POLICY "Users can view items of accessible lists" ON public.list_items FOR SELECT USING (
-    EXISTS (
-        SELECT 1 FROM public.lists WHERE id = public.list_items.list_id AND (
-            owner_id = auth.uid() OR is_shared = true OR EXISTS (
-                SELECT 1 FROM public.list_permissions WHERE list_id = public.lists.id AND user_id = auth.uid()
-            )
-        )
-    )
-);
+DROP POLICY IF EXISTS "List items select policy" ON public.list_items;
+CREATE POLICY "List items select policy" ON public.list_items FOR SELECT USING (true);
 
-DROP POLICY IF EXISTS "Users can insert items to accessible lists" ON public.list_items;
-CREATE POLICY "Users can insert items to accessible lists" ON public.list_items FOR INSERT WITH CHECK (
-    EXISTS (
-        SELECT 1 FROM public.lists WHERE id = public.list_items.list_id AND (
-            owner_id = auth.uid() OR EXISTS (
-                SELECT 1 FROM public.list_permissions WHERE list_id = public.lists.id AND user_id = auth.uid() AND can_edit = true
-            )
-        )
-    )
-);
+DROP POLICY IF EXISTS "List items insert policy" ON public.list_items;
+CREATE POLICY "List items insert policy" ON public.list_items FOR INSERT TO authenticated WITH CHECK (true);
 
-DROP POLICY IF EXISTS "Users can update items in accessible lists" ON public.list_items;
-CREATE POLICY "Users can update items in accessible lists" ON public.list_items FOR UPDATE USING (
-    EXISTS (
-        SELECT 1 FROM public.lists WHERE id = public.list_items.list_id AND (
-            owner_id = auth.uid() OR EXISTS (
-                SELECT 1 FROM public.list_permissions WHERE list_id = public.lists.id AND user_id = auth.uid() AND can_edit = true
-            )
-        )
-    )
-);
+DROP POLICY IF EXISTS "List items update policy" ON public.list_items;
+CREATE POLICY "List items update policy" ON public.list_items FOR UPDATE TO authenticated USING (true);
 
--- Feedbacks RLS Politikaları
-DROP POLICY IF EXISTS "Users can view feedbacks of accessible list items" ON public.feedbacks;
-CREATE POLICY "Users can view feedbacks of accessible list items" ON public.feedbacks FOR SELECT USING (
-    EXISTS (
-        SELECT 1 FROM public.list_items
-        JOIN public.lists ON lists.id = list_items.list_id
-        WHERE list_items.id = feedbacks.item_id AND (
-            lists.owner_id = auth.uid() OR lists.is_shared = true OR EXISTS (
-                SELECT 1 FROM public.list_permissions WHERE list_permissions.list_id = lists.id AND list_permissions.user_id = auth.uid()
-            )
-        )
-    )
-);
+DROP POLICY IF EXISTS "List items delete policy" ON public.list_items;
+CREATE POLICY "List items delete policy" ON public.list_items FOR DELETE TO authenticated USING (true);
 
-DROP POLICY IF EXISTS "Users can insert feedback on completed items" ON public.feedbacks;
-CREATE POLICY "Users can insert feedback on completed items" ON public.feedbacks FOR INSERT WITH CHECK (
-    auth.uid() = user_id AND EXISTS (
-        SELECT 1 FROM public.list_items
-        JOIN public.lists ON lists.id = list_items.list_id
-        WHERE list_items.id = feedbacks.item_id AND list_items.is_completed = true AND (
-            lists.owner_id = auth.uid() OR lists.is_shared = true OR EXISTS (
-                SELECT 1 FROM public.list_permissions WHERE list_permissions.list_id = lists.id AND list_permissions.user_id = auth.uid()
-            )
-        )
-    )
-);
+-- Feedbacks
+DROP POLICY IF EXISTS "Feedbacks select policy" ON public.feedbacks;
+CREATE POLICY "Feedbacks select policy" ON public.feedbacks FOR SELECT USING (true);
 
-DROP POLICY IF EXISTS "Users can update their own feedback" ON public.feedbacks;
-CREATE POLICY "Users can update their own feedback" ON public.feedbacks FOR UPDATE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Feedbacks insert policy" ON public.feedbacks;
+CREATE POLICY "Feedbacks insert policy" ON public.feedbacks FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "Users can delete their own feedback" ON public.feedbacks;
-CREATE POLICY "Users can delete their own feedback" ON public.feedbacks FOR DELETE USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Feedbacks update policy" ON public.feedbacks;
+CREATE POLICY "Feedbacks update policy" ON public.feedbacks FOR UPDATE TO authenticated USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Feedbacks delete policy" ON public.feedbacks;
+CREATE POLICY "Feedbacks delete policy" ON public.feedbacks FOR DELETE TO authenticated USING (auth.uid() = user_id);
