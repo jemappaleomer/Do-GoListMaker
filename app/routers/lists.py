@@ -54,19 +54,17 @@ async def list_index(request: Request, error: Optional[str] = None, user: dict =
 
         # 2. Kullanıcıyla paylaşılan ve kaydedilen listeler
         # Kullanıcının list_permissions tablosundaki kayıtlarını çek.
-        # RLS kısıtlamalarına takılmamak için service_client ile güvenli sorgulama yapıyoruz.
         try:
-            service_client = get_supabase_client()
-            perm_res = service_client.table("list_permissions").select("list_id, can_delete").eq("user_id", user["id"]).execute()
+            perm_res = supabase.table("list_permissions").select("list_id, can_delete").eq("user_id", user["id"]).execute()
             if perm_res.data:
                 perm_map = {p["list_id"]: p.get("can_delete", False) for p in perm_res.data if p.get("list_id")}
                 list_ids = list(perm_map.keys())
                 if list_ids:
                     # Kullanıcının kendi listeleri zaten my_lists içinde, sadece diğer kullanıcıların listelerini getir
                     try:
-                        lists_res = service_client.table("lists").select("*, profiles:owner_id(username)").in_("id", list_ids).execute()
+                        lists_res = supabase.table("lists").select("*, profiles:owner_id(username)").in_("id", list_ids).execute()
                     except Exception:
-                        lists_res = service_client.table("lists").select("*").in_("id", list_ids).execute()
+                        lists_res = supabase.table("lists").select("*").in_("id", list_ids).execute()
                     
                     for l_data in (lists_res.data or []):
                         if l_data.get("owner_id") != user["id"]:
@@ -168,10 +166,9 @@ async def get_list(list_id: str, request: Request, error: Optional[str] = None, 
         can_delete = is_owner
         if user and not is_owner:
             try:
-                service_client = get_supabase_client()
                 # Profilin profiles tablosunda var olduğunu garanti et (Foreign key hatasını önlemek için)
                 try:
-                    service_client.table("profiles").upsert({
+                    client.table("profiles").upsert({
                         "id": user["id"],
                         "username": user.get("username", "user"),
                         "email": user.get("email", "")
@@ -179,14 +176,17 @@ async def get_list(list_id: str, request: Request, error: Optional[str] = None, 
                 except Exception as pe_prof:
                     logger.debug("Ensure profile in get_list: %s", pe_prof)
 
-                perm_res = service_client.table("list_permissions").select("*").eq("list_id", list_id).eq("user_id", user["id"]).execute()
+                perm_res = client.table("list_permissions").select("*").eq("list_id", list_id).eq("user_id", user["id"]).execute()
                 if not perm_res.data:
                     # Kullanıcı ortak listeyi açtığında otomatik listelerine kaydet
-                    service_client.table("list_permissions").upsert({
-                        "list_id": list_id,
-                        "user_id": user["id"],
-                        "permission_level": "edit"
-                    }, on_conflict="list_id,user_id").execute()
+                    try:
+                        client.table("list_permissions").insert({
+                            "list_id": list_id,
+                            "user_id": user["id"],
+                            "permission_level": "edit"
+                        }).execute()
+                    except Exception as ins_err:
+                        logger.debug("Auto-save insert list_permissions: %s", ins_err)
                     is_saved = True
                     can_delete = False
                 else:
@@ -279,19 +279,26 @@ async def save_shared_list(list_id: str, user: dict = Depends(get_current_user_r
     try:
         supabase = get_authenticated_client(user["access_token"])
         
-        service_client = get_supabase_client()
-        # Listenin paylaşıma açık olduğunu ve varlığını doğrula
-        list_res = service_client.table("lists").select("id, owner_id, is_shared, is_public").eq("id", list_id).single().execute()
+        # Listenin paylaşıma açık olduğunu ve varlığını doğrula (authenticated istemci ile)
+        list_res = supabase.table("lists").select("id, owner_id, is_shared, is_public").eq("id", list_id).execute()
+        if not list_res.data:
+            # Fallback service client ile kontrol
+            try:
+                service_client = get_supabase_client()
+                list_res = service_client.table("lists").select("id, owner_id, is_shared, is_public").eq("id", list_id).execute()
+            except Exception:
+                pass
+
         if not list_res.data:
             return RedirectResponse(url="/lists", status_code=status.HTTP_303_SEE_OTHER)
 
-        l_data = list_res.data
+        l_data = list_res.data[0]
         if l_data.get("owner_id") == user["id"]:
             return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
 
-        # Profil kaydını profiles tablosunda sağla
+        # Profil kaydını profiles tablosunda sağla (authenticated kullanıcı kendi profilini ekleyebilir/güncelleyebilir)
         try:
-            service_client.table("profiles").upsert({
+            supabase.table("profiles").upsert({
                 "id": user["id"],
                 "username": user.get("username", "user"),
                 "email": user.get("email", "")
@@ -299,12 +306,28 @@ async def save_shared_list(list_id: str, user: dict = Depends(get_current_user_r
         except Exception as pe:
             logger.debug("Profile upsert in save_shared_list: %s", pe)
 
-        # list_permissions tablosuna kaydet
-        service_client.table("list_permissions").upsert({
-            "list_id": list_id,
-            "user_id": user["id"],
-            "permission_level": "edit"
-        }, on_conflict="list_id,user_id").execute()
+        # list_permissions tablosuna önceden eklenmiş mi kontrol et
+        try:
+            perm_check = supabase.table("list_permissions").select("id").eq("list_id", list_id).eq("user_id", user["id"]).execute()
+            if not perm_check.data:
+                supabase.table("list_permissions").insert({
+                    "list_id": list_id,
+                    "user_id": user["id"],
+                    "permission_level": "edit"
+                }).execute()
+        except Exception as perm_err:
+            logger.warning("Error inserting list_permissions with auth client: %s", perm_err)
+            # Alternatif fallback (eğer RLS izin verirse)
+            try:
+                service_client = get_supabase_client()
+                service_client.table("list_permissions").upsert({
+                    "list_id": list_id,
+                    "user_id": user["id"],
+                    "permission_level": "edit"
+                }, on_conflict="list_id,user_id").execute()
+            except Exception as se:
+                logger.error("Fallback permission upsert failed: %s", se)
+                raise se
 
         return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as e:
