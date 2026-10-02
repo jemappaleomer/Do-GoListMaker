@@ -52,31 +52,26 @@ async def list_index(request: Request, error: Optional[str] = None, user: dict =
         my_res = supabase.table("lists").select("*").eq("owner_id", user["id"]).order("created_at", desc=True).execute()
         my_lists = my_res.data or []
 
-        # 2. Kullanıcıyla paylaşılan ve katıldığı listeler
+        # 2. Kullanıcıyla paylaşılan ve kaydedilen listeler
+        # Doğrudan list_permissions tablosundan kullanıcının yetkili/kayıtlı olduğu listelerin ID'lerini al
         try:
-            perm_res = supabase.table("list_permissions").select("list_id, can_delete, lists(*)").eq("user_id", user["id"]).execute()
+            perm_res = supabase.table("list_permissions").select("list_id, can_delete").eq("user_id", user["id"]).execute()
             if perm_res.data:
-                for item in perm_res.data:
-                    if item.get("lists"):
-                        l_data = item["lists"]
-                        if l_data.get("owner_id") != user["id"]:
-                            l_data["can_delete_perm"] = item.get("can_delete", False)
-                            shared_lists.append(l_data)
-        except Exception as e_join:
-            logger.info("Join query for shared lists failed, falling back to 2-step fetch: %s", e_join)
-            try:
-                perm_ids_res = supabase.table("list_permissions").select("list_id, can_delete").eq("user_id", user["id"]).execute()
-                if perm_ids_res.data:
-                    perm_map = {p["list_id"]: p.get("can_delete", False) for p in perm_ids_res.data}
-                    list_ids = list(perm_map.keys())
-                    if list_ids:
+                perm_map = {p["list_id"]: p.get("can_delete", False) for p in perm_res.data if p.get("list_id")}
+                list_ids = list(perm_map.keys())
+                if list_ids:
+                    # Kullanıcının kendi listeleri zaten my_lists içinde, sadece diğer kullanıcıların listelerini getir
+                    try:
+                        lists_res = supabase.table("lists").select("*, profiles:owner_id(username)").in_("id", list_ids).execute()
+                    except Exception:
                         lists_res = supabase.table("lists").select("*").in_("id", list_ids).execute()
-                        for l_data in (lists_res.data or []):
-                            if l_data.get("owner_id") != user["id"]:
-                                l_data["can_delete_perm"] = perm_map.get(l_data["id"], False)
-                                shared_lists.append(l_data)
-            except Exception as e_fallback:
-                logger.warning("Fallback fetching shared lists failed: %s", e_fallback)
+                    
+                    for l_data in (lists_res.data or []):
+                        if l_data.get("owner_id") != user["id"]:
+                            l_data["can_delete_perm"] = perm_map.get(l_data["id"], False)
+                            shared_lists.append(l_data)
+        except Exception as e_perm:
+            logger.warning("Error fetching shared list permissions: %s", e_perm)
     except Exception as e:
         logger.exception("Error fetching lists: %s", e)
 
