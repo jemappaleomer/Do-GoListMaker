@@ -134,7 +134,7 @@ async def create_list(
 
 
 @router.get("/{list_id}", response_class=HTMLResponse)
-async def get_list(list_id: str, request: Request, error: Optional[str] = None, user: dict = Depends(get_current_user_optional)):
+async def get_list(list_id: str, request: Request, error: Optional[str] = None, notice: Optional[str] = None, user: dict = Depends(get_current_user_optional)):
     try:
         client = get_authenticated_client(user["access_token"]) if user else get_supabase_client()
         
@@ -162,38 +162,23 @@ async def get_list(list_id: str, request: Request, error: Optional[str] = None, 
                 return RedirectResponse(url="/auth/login", status_code=status.HTTP_302_FOUND)
 
         # Ortak listeye katılım durumu (is_saved)
+        # Sadece kullanıcı daha önce "Listelerime Kaydet" butonuna basmışsa True olur.
+        # Linki salt görüntüleyen kullanıcılar için otomatik olarak kaydedilmez.
         is_saved = is_owner
         can_delete = is_owner
         if user and not is_owner:
             try:
-                # Profilin profiles tablosunda var olduğunu garanti et (Foreign key hatasını önlemek için)
-                try:
-                    client.table("profiles").upsert({
-                        "id": user["id"],
-                        "username": user.get("username", "user"),
-                        "email": user.get("email", "")
-                    }, on_conflict="id").execute()
-                except Exception as pe_prof:
-                    logger.debug("Ensure profile in get_list: %s", pe_prof)
-
-                perm_res = client.table("list_permissions").select("*").eq("list_id", list_id).eq("user_id", user["id"]).execute()
-                if not perm_res.data:
-                    # Kullanıcı ortak listeyi açtığında otomatik listelerine kaydet
-                    try:
-                        client.table("list_permissions").insert({
-                            "list_id": list_id,
-                            "user_id": user["id"],
-                            "permission_level": "edit"
-                        }).execute()
-                    except Exception as ins_err:
-                        logger.debug("Auto-save insert list_permissions: %s", ins_err)
-                    is_saved = True
-                    can_delete = False
-                else:
+                perm_res = client.table("list_permissions").select("id, can_delete").eq("list_id", list_id).eq("user_id", user["id"]).execute()
+                if perm_res.data and len(perm_res.data) > 0:
                     is_saved = True
                     can_delete = perm_res.data[0].get("can_delete", False)
+                else:
+                    is_saved = False
+                    can_delete = False
             except Exception as pe:
-                logger.warning("Permission register warning: %s", pe)
+                logger.warning("Permission check warning in get_list: %s", pe)
+                is_saved = False
+                can_delete = False
 
         # Liste maddelerini çek (Önce position, sonra created_at)
         raw_items = []
@@ -265,7 +250,8 @@ async def get_list(list_id: str, request: Request, error: Optional[str] = None, 
                 "is_saved": is_saved,
                 "can_delete": can_delete,
                 "collaborators": collaborators,
-                "error": error
+                "error": error,
+                "notice": notice
             }
         )
     except Exception as e:
@@ -329,7 +315,10 @@ async def save_shared_list(list_id: str, user: dict = Depends(get_current_user_r
                 logger.error("Fallback permission upsert failed: %s", se)
                 raise se
 
-        return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
+        return RedirectResponse(
+            url=f"/lists/{list_id}?notice={safe_error_param('Ortak liste başarıyla listelerinize kaydedildi!')}", 
+            status_code=status.HTTP_303_SEE_OTHER
+        )
     except Exception as e:
         logger.exception("Error saving shared list: %s", e)
         return RedirectResponse(url=f"/lists/{list_id}?error={safe_error_param('Liste kaydedilirken bir hata oluştu.')}", status_code=status.HTTP_303_SEE_OTHER)
