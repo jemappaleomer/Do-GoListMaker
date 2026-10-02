@@ -9,8 +9,18 @@ def get_supabase_client() -> Client:
     return create_client(settings.SUPABASE_URL, supabase_key)
 
 def get_authenticated_client(access_token: str) -> Client:
-    """Returns a client scoped with user's access token for RLS policies."""
+    """Returns a client scoped with user's access token for RLS policies.
+    
+    Note: In supabase-py v2.x, postgrest.auth() updates postgrest.headers 
+    but NOT postgrest.session.headers (they are separate objects). 
+    We must update both so the actual HTTP requests carry the user's JWT.
+    """
     supabase_key = settings.key
     client = create_client(settings.SUPABASE_URL, supabase_key)
+    # Set the token on the postgrest client's own headers
     client.postgrest.auth(access_token)
+    # CRITICAL: Also set it on the HTTP session headers that are actually used for requests
+    if hasattr(client.postgrest, 'session') and hasattr(client.postgrest.session, 'headers'):
+        client.postgrest.session.headers["authorization"] = f"Bearer {access_token}"
     return client
+
