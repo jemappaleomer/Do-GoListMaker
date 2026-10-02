@@ -2,6 +2,11 @@
 
 {% block title %}{{ list_data.title }} - Do&Go List Maker{% endblock %}
 
+{% block head_extra %}
+<!-- SortableJS for Drag-and-Drop Reordering -->
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+{% endblock %}
+
 {% block content %}
 <div class="max-w-3xl mx-auto space-y-6">
     <!-- Breadcrumb & Top Bar -->
@@ -252,12 +257,24 @@
     <div class="space-y-4" id="items-container">
         {% if items and items|length > 0 %}
             {% for item in items %}
-            <div class="bg-white border {% if item.is_completed %}border-emerald-100 bg-emerald-50/20{% else %}border-slate-200{% endif %} rounded-2xl p-4 sm:p-5 shadow-sm space-y-3 transition group item-card"
+            <div class="bg-white border {% if item.is_completed %}border-emerald-100 bg-emerald-50/20{% else %}border-slate-200{% endif %} rounded-2xl p-4 sm:p-5 shadow-sm space-y-3 transition group item-card relative"
                  data-id="{{ item.id }}"
                  data-title="{{ item.title }}"
+                 data-type="{{ item.list_type or 'GO' }}"
+                 data-tag="{{ item.tag or 'cafe' }}"
+                 data-platform="{{ item.media_platform or '' }}"
+                 data-market="{{ item.market_name or '' }}"
+                 data-url="{{ item.location_url or '' }}"
                  data-completed="{{ 'true' if item.is_completed else 'false' }}">
                 <div class="flex items-start justify-between gap-4">
-                    <div class="flex items-start space-x-3.5 min-w-0">
+                    <div class="flex items-start space-x-3 min-w-0">
+                        <!-- Drag Handle (Only for users who can edit/reorder) -->
+                        {% if user %}
+                        <div class="drag-handle text-slate-300 hover:text-slate-600 cursor-grab active:cursor-grabbing p-1 -ml-1 mt-0.5 select-none transition" title="Sürükleyip sıralamayı değiştirin">
+                            <i data-lucide="grip-vertical" class="w-4 h-4"></i>
+                        </div>
+                        {% endif %}
+
                         <!-- Toggle Checkbox Form -->
                         {% if user %}
                         <form action="/lists/{{ list_data.id }}/items/{{ item.id }}/toggle" method="POST" class="flex items-center m-0 mt-0.5">
@@ -362,14 +379,24 @@
                         </div>
                     </div>
 
-                    <!-- Right Actions: Delete & Feedback Button -->
-                    <div class="flex items-center space-x-2 flex-shrink-0">
+                    <!-- Right Actions: Edit, Delete & Feedback Button -->
+                    <div class="flex items-center space-x-1.5 flex-shrink-0">
                         <!-- If completed and user is logged in, show 'Değerlendir' button -->
                         {% if user and item.is_completed %}
                         <button onclick="toggleFeedbackForm('fb-form-{{ item.id }}')" 
                                 class="inline-flex items-center space-x-1.5 text-xs font-medium px-3 py-1.5 rounded-xl border transition {% if item.user_feedback %}bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100 shadow-2xs{% else %}bg-white text-slate-700 border-slate-200 hover:bg-slate-50 shadow-2xs{% endif %}">
                             <i data-lucide="star" class="w-3.5 h-3.5 {% if item.user_feedback %}fill-amber-400 text-amber-500{% else %}text-slate-400{% endif %}"></i>
                             <span>{% if item.user_feedback %}Puanım: {{ item.user_feedback.rating }} ★ (Düzenle){% else %}Puan Ver{% endif %}</span>
+                        </button>
+                        {% endif %}
+
+                        <!-- Edit Item Button (Kullanıcı yanlış kategori seçtiğinde anında düzenleyebilsin) -->
+                        {% if user %}
+                        <button type="button" 
+                                onclick="openEditModal('{{ item.id }}', '{{ item.title | replace("'", "\\'") }}', '{{ item.list_type or 'GO' }}', '{{ item.tag or 'cafe' }}', '{{ item.media_platform or '' }}', '{{ item.market_name or '' }}', '{{ item.location_url or '' }}')"
+                                class="p-1.5 text-slate-400 hover:text-emerald-600 rounded-lg hover:bg-emerald-50 transition" 
+                                title="Öğeyi ve Kategoriyi Düzenle">
+                            <i data-lucide="edit-3" class="w-4 h-4"></i>
                         </button>
                         {% endif %}
 
@@ -423,7 +450,7 @@
 
                         <div class="flex items-center justify-end space-x-2">
                             <button type="button" onclick="toggleFeedbackForm('fb-form-{{ item.id }}')" 
-                                    class="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-800 bg-white border border-slate-200 rounded-lg transition">
+                                     class="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-800 bg-white border border-slate-200 rounded-lg transition">
                                 Vazgeç
                             </button>
                             <button type="submit" 
@@ -443,6 +470,111 @@
                 <p class="text-xs text-slate-400 mt-1">Yukarıdaki formdan ilk mekanı veya aktiviteyi ekleyerek başlayabilirsiniz.</p>
             </div>
         {% endif %}
+    </div>
+</div>
+
+<!-- Öğe Düzenleme Modalı (Edit Item Modal) -->
+<div id="edit-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+    <div class="bg-white rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl border border-slate-100 space-y-4 animate-slide-up">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+            <h3 class="text-base font-bold text-slate-900 flex items-center space-x-2">
+                <i data-lucide="edit-3" class="w-5 h-5 text-emerald-600"></i>
+                <span>Öğeyi Düzenle</span>
+            </h3>
+            <button type="button" onclick="closeEditModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+
+        <form id="edit-item-form" method="POST" class="space-y-4">
+            <input type="hidden" name="list_type" id="edit-list-type" value="GO">
+
+            <!-- Type Tabs: GO vs DO -->
+            <div class="flex items-center justify-between">
+                <label class="text-xs font-bold text-slate-700">Kategori Tipi</label>
+                <div class="inline-flex p-1 bg-slate-100 rounded-xl text-xs font-semibold" role="tablist">
+                    <button type="button" onclick="setEditListType('GO')" id="edit-tab-btn-go"
+                            class="px-3 py-1 rounded-lg transition bg-white text-emerald-700 shadow-2xs">
+                        📍 Go (Gidilecek)
+                    </button>
+                    <button type="button" onclick="setEditListType('DO')" id="edit-tab-btn-do"
+                            class="px-3 py-1 rounded-lg transition text-slate-600 hover:text-slate-900">
+                        🎬 Do (Yapılacak)
+                    </button>
+                </div>
+            </div>
+
+            <!-- Title Input -->
+            <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Başlık / İsim</label>
+                <input type="text" name="title" id="edit-title-input" required 
+                       class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-sm font-medium">
+            </div>
+
+            <!-- Tag Selection -->
+            <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Alt Kategori (Etiket)</label>
+                <select name="tag" id="edit-tag-select" onchange="onEditTagChange()"
+                        class="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-white font-medium text-slate-700">
+                    <optgroup label="📍 Gidilecekler (Go)" id="edit-optgroup-go">
+                        <option value="cafe">☕ Kafe</option>
+                        <option value="restaurant">🍽️ Restoran</option>
+                        <option value="museum">🏛️ Müze / Sanat</option>
+                        <option value="travel">🌄 Gezilecek Yer</option>
+                    </optgroup>
+                    <optgroup label="🎬 Yapılacaklar (Do)" id="edit-optgroup-do" class="hidden">
+                        <option value="series">📺 Dizi</option>
+                        <option value="movie">🎬 Film</option>
+                        <option value="book">📚 Kitap</option>
+                        <option value="shopping">🛒 Alışveriş</option>
+                    </optgroup>
+                </select>
+            </div>
+
+            <!-- Media Platform Dynamic Field -->
+            <div id="edit-dynamic-media-platform" class="hidden">
+                <label class="block text-xs font-bold text-slate-700 mb-1">İzleme Platformu / Yayıncı</label>
+                <select name="media_platform" id="edit-media-platform-select"
+                        class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-white">
+                    <option value="None">Platform Seçin (Opsiyonel)</option>
+                    <option value="Netflix">🔴 Netflix</option>
+                    <option value="Disney+">🔵 Disney+</option>
+                    <option value="Prime">📦 Amazon Prime</option>
+                    <option value="HBO">🟣 HBO / Max</option>
+                    <option value="AppleTV">🍏 Apple TV+</option>
+                    <option value="YouTube">▶️ YouTube</option>
+                    <option value="Cinema">🍿 Sinema</option>
+                    <option value="Other">Diğer</option>
+                </select>
+            </div>
+
+            <!-- Shopping Market Name Dynamic Field -->
+            <div id="edit-dynamic-market-name" class="hidden">
+                <label class="block text-xs font-bold text-slate-700 mb-1">Mağaza / Market Adı</label>
+                <input type="text" name="market_name" id="edit-market-name-input"
+                       class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                       placeholder="Örn: Migros, Trendyol, Ikea...">
+            </div>
+
+            <!-- Location URL Field -->
+            <div id="edit-dynamic-location-url">
+                <label class="block text-xs font-bold text-slate-700 mb-1">Google Maps / Konum Linki</label>
+                <input type="url" name="location_url" id="edit-location-url-input"
+                       class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                       placeholder="https://maps.google.com/...">
+            </div>
+
+            <div class="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
+                <button type="button" onclick="closeEditModal()" 
+                        class="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition">
+                    İptal
+                </button>
+                <button type="submit" 
+                        class="px-5 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-sm transition">
+                    Değişiklikleri Kaydet
+                </button>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -617,13 +749,122 @@
         });
     }
 
-    // Initialize all existing ratings
+    // Initialize all existing ratings & Drag-and-Drop Sortable
     document.addEventListener('DOMContentLoaded', function() {
+        // Yıldız puanlarını ilk yükleme
         document.querySelectorAll('.star-rating-group').forEach(group => {
             const itemId = group.dataset.itemId;
             const currentVal = parseFloat(document.getElementById('rating-val-' + itemId).value) || 5.0;
             renderStars(itemId, currentVal);
         });
+
+        // SortableJS Drag & Drop
+        const container = document.getElementById('items-container');
+        if (container && typeof Sortable !== 'undefined') {
+            new Sortable(container, {
+                handle: '.drag-handle',
+                animation: 200,
+                ghostClass: 'opacity-40',
+                chosenClass: 'bg-emerald-50/50',
+                dragClass: 'shadow-2xl',
+                onEnd: function() {
+                    const itemCards = container.querySelectorAll('.item-card');
+                    const orderedIds = Array.from(itemCards).map(card => card.dataset.id);
+                    
+                    // Backend'e sıralamayı asenkron kaydet
+                    fetch('/lists/{{ list_data.id }}/items/reorder', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ item_ids: orderedIds })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (!data.success) {
+                            console.warn('Sıralama sunucuya kaydedilemedi:', data.error);
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Sıralama isteği hatası:', err);
+                    });
+                }
+            });
+        }
     });
+
+    // Öğe Düzenleme (Edit Item Modal) Fonksiyonları
+    function openEditModal(itemId, title, listType, tag, platform, market, url) {
+        const form = document.getElementById('edit-item-form');
+        form.action = `/lists/{{ list_data.id }}/items/${itemId}/edit`;
+
+        document.getElementById('edit-title-input').value = title;
+        document.getElementById('edit-location-url-input').value = url || '';
+        document.getElementById('edit-market-name-input').value = market || '';
+        
+        const platformSelect = document.getElementById('edit-media-platform-select');
+        platformSelect.value = platform || 'None';
+
+        setEditListType(listType || 'GO');
+        document.getElementById('edit-tag-select').value = tag || (listType === 'DO' ? 'series' : 'cafe');
+        onEditTagChange();
+
+        document.getElementById('edit-modal').classList.remove('hidden');
+    }
+
+    function closeEditModal() {
+        document.getElementById('edit-modal').classList.add('hidden');
+    }
+
+    function setEditListType(type) {
+        document.getElementById('edit-list-type').value = type;
+        const btnGo = document.getElementById('edit-tab-btn-go');
+        const btnDo = document.getElementById('edit-tab-btn-do');
+        const optGo = document.getElementById('edit-optgroup-go');
+        const optDo = document.getElementById('edit-optgroup-do');
+        const tagSelect = document.getElementById('edit-tag-select');
+
+        if (type === 'GO') {
+            btnGo.className = "px-3 py-1 rounded-lg transition bg-white text-emerald-700 shadow-2xs";
+            btnDo.className = "px-3 py-1 rounded-lg transition text-slate-600 hover:text-slate-900";
+            optGo.classList.remove('hidden');
+            optDo.classList.add('hidden');
+            if (['series', 'movie', 'book', 'shopping'].includes(tagSelect.value)) {
+                tagSelect.value = "cafe";
+            }
+        } else {
+            btnDo.className = "px-3 py-1 rounded-lg transition bg-white text-emerald-700 shadow-2xs";
+            btnGo.className = "px-3 py-1 rounded-lg transition text-slate-600 hover:text-slate-900";
+            optDo.classList.remove('hidden');
+            optGo.classList.add('hidden');
+            if (['cafe', 'restaurant', 'museum', 'travel'].includes(tagSelect.value)) {
+                tagSelect.value = "series";
+            }
+        }
+        onEditTagChange();
+    }
+
+    function onEditTagChange() {
+        const tag = document.getElementById('edit-tag-select').value;
+        const mediaBox = document.getElementById('edit-dynamic-media-platform');
+        const marketBox = document.getElementById('edit-dynamic-market-name');
+        const locationBox = document.getElementById('edit-dynamic-location-url');
+
+        mediaBox.classList.add('hidden');
+        marketBox.classList.add('hidden');
+        locationBox.classList.remove('hidden');
+
+        if (tag === 'series' || tag === 'movie') {
+            mediaBox.classList.remove('hidden');
+            locationBox.classList.add('hidden');
+        } else if (tag === 'book') {
+            locationBox.classList.add('hidden');
+        } else if (tag === 'shopping') {
+            marketBox.classList.remove('hidden');
+            locationBox.classList.remove('hidden');
+        } else {
+            locationBox.classList.remove('hidden');
+        }
+    }
 </script>
 {% endblock %}

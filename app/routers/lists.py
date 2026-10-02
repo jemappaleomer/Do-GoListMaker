@@ -1,9 +1,9 @@
 import logging
 import urllib.parse
 from urllib.parse import urlparse
-from typing import Optional
-from fastapi import APIRouter, Request, Form, Depends, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from typing import Optional, List
+from fastapi import APIRouter, Request, Form, Depends, status, Body
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from app.core.config import TEMPLATES_DIR
@@ -166,17 +166,21 @@ async def get_list(list_id: str, request: Request, error: Optional[str] = None, 
             except Exception as pe:
                 logger.warning("Permission register warning: %s", pe)
 
-        # Liste maddelerini çek
+        # Liste maddelerini çek (Önce position, sonra created_at)
         raw_items = []
         try:
-            items_res = client.table("list_items").select("*, profiles:created_by(username)").eq("list_id", list_id).order("created_at", desc=False).execute()
+            items_res = client.table("list_items").select("*, profiles:created_by(username)").eq("list_id", list_id).order("position", desc=False).order("created_at", desc=False).execute()
             raw_items = items_res.data or []
         except Exception:
             try:
-                items_res = client.table("list_items").select("*").eq("list_id", list_id).order("created_at", desc=False).execute()
+                items_res = client.table("list_items").select("*, profiles:created_by(username)").eq("list_id", list_id).order("created_at", desc=False).execute()
                 raw_items = items_res.data or []
-            except Exception as ie:
-                logger.warning("Error loading list items: %s", ie)
+            except Exception:
+                try:
+                    items_res = client.table("list_items").select("*").eq("list_id", list_id).order("created_at", desc=False).execute()
+                    raw_items = items_res.data or []
+                except Exception as ie:
+                    logger.warning("Error loading list items: %s", ie)
 
         completed_count = sum(1 for item in raw_items if item.get("is_completed"))
 
@@ -408,3 +412,103 @@ async def submit_feedback(
     except Exception as e:
         logger.exception("Error submitting feedback: %s", e)
         return RedirectResponse(url=f"/lists/{list_id}?error={safe_error_param('Puan kaydedilirken bir sorun oluştu.')}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/{list_id}/items/{item_id}/edit")
+async def edit_item(
+    list_id: str,
+    item_id: str,
+    title: str = Form(...),
+    list_type: str = Form("GO"),
+    tag: str = Form("cafe"),
+    media_platform: Optional[str] = Form(None),
+    market_name: Optional[str] = Form(None),
+    location_url: Optional[str] = Form(None),
+    user: dict = Depends(get_current_user_required)
+):
+    """Kullanıcının yanlış kategori/etiket veya başlık girdiği öğeleri düzenlemesi."""
+    try:
+        clean_title = title.strip()
+        if not clean_title:
+            return RedirectResponse(url=f"/lists/{list_id}?error={safe_error_param('Öğe başlığı boş olamaz.')}", status_code=status.HTTP_303_SEE_OTHER)
+
+        safe_loc_url = sanitize_url(location_url)
+        clean_platform = media_platform.strip() if media_platform and media_platform.strip() != "None" else None
+        clean_market = market_name.strip() if market_name else None
+
+        supabase = get_authenticated_client(user["access_token"])
+
+        # Yetki kontrolü (liste sahibi veya izinli kullanıcı)
+        list_res = supabase.table("lists").select("owner_id").eq("id", list_id).single().execute()
+        if not list_res.data:
+            return RedirectResponse(url="/lists", status_code=status.HTTP_303_SEE_OTHER)
+
+        is_owner = list_res.data.get("owner_id") == user["id"]
+        if not is_owner:
+            perm_res = supabase.table("list_permissions").select("id").eq("list_id", list_id).eq("user_id", user["id"]).execute()
+            if not perm_res.data:
+                return RedirectResponse(url=f"/lists/{list_id}?error={safe_error_param('Bu öğeyi düzenleme yetkiniz yok.')}", status_code=status.HTTP_303_SEE_OTHER)
+
+        # Güncelleme yükü
+        update_payload = {
+            "title": clean_title,
+            "list_type": list_type,
+            "tag": tag,
+            "media_platform": clean_platform,
+            "market_name": clean_market,
+            "location_url": safe_loc_url
+        }
+
+        try:
+            supabase.table("list_items").update(update_payload).eq("id", item_id).eq("list_id", list_id).execute()
+        except Exception as u1:
+            logger.info("Update with all fields failed, trying basic update: %s", u1)
+            # Eski DB sütunları uyumluluk fallback'i
+            basic_update = {
+                "title": clean_title,
+                "location_url": safe_loc_url
+            }
+            supabase.table("list_items").update(basic_update).eq("id", item_id).eq("list_id", list_id).execute()
+
+        return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
+    except Exception as e:
+        logger.exception("Error editing item: %s", e)
+        return RedirectResponse(url=f"/lists/{list_id}?error={safe_error_param('Öğe düzenlenirken bir hata oluştu.')}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/{list_id}/items/reorder")
+async def reorder_items(
+    list_id: str,
+    payload: dict = Body(...),
+    user: dict = Depends(get_current_user_required)
+):
+    """Sürükle-bırak (drag and drop) sonrası öğe sıralamasını güncelleme."""
+    try:
+        ordered_ids = payload.get("item_ids", [])
+        if not isinstance(ordered_ids, list) or not ordered_ids:
+            return JSONResponse(status_code=400, content={"error": "Geçersiz öğe listesi."})
+
+        supabase = get_authenticated_client(user["access_token"])
+
+        # Yetki kontrolü (liste sahibi veya katılımcı)
+        list_res = supabase.table("lists").select("owner_id").eq("id", list_id).single().execute()
+        if not list_res.data:
+            return JSONResponse(status_code=404, content={"error": "Liste bulunamadı."})
+
+        is_owner = list_res.data.get("owner_id") == user["id"]
+        if not is_owner:
+            perm_res = supabase.table("list_permissions").select("id").eq("list_id", list_id).eq("user_id", user["id"]).execute()
+            if not perm_res.data:
+                return JSONResponse(status_code=403, content={"error": "Yetkiniz bulunmuyor."})
+
+        # Her öğenin position değerini güncelle
+        for idx, item_id in enumerate(ordered_ids):
+            try:
+                supabase.table("list_items").update({"position": idx}).eq("id", item_id).eq("list_id", list_id).execute()
+            except Exception as pe:
+                logger.info("Position update ignored for item %s: %s", item_id, pe)
+
+        return JSONResponse(status_code=200, content={"success": True, "message": "Sıralama kaydedildi."})
+    except Exception as e:
+        logger.exception("Error reordering items: %s", e)
+        return JSONResponse(status_code=500, content={"error": "Sıralama güncellenemedi."})

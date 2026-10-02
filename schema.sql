@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS public.list_items (
     tag TEXT DEFAULT 'cafe',                   -- 'cafe', 'restaurant', 'museum', 'travel', 'movie', 'series', 'book', 'shopping', 'other'
     media_platform TEXT,                       -- 'Netflix', 'Disney+', 'Prime', 'HBO', 'AppleTV', 'YouTube', 'Cinema', 'Other'
     market_name TEXT,                          -- 'Migros', 'Trendyol', 'Ikea' vb.
+    position INTEGER DEFAULT 0 NOT NULL,       -- Sıralama / Drag-and-drop sırası
     created_by UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     completed_at TIMESTAMP WITH TIME ZONE
@@ -71,6 +72,7 @@ ALTER TABLE public.list_items ADD COLUMN IF NOT EXISTS list_type TEXT DEFAULT 'G
 ALTER TABLE public.list_items ADD COLUMN IF NOT EXISTS tag TEXT DEFAULT 'cafe';
 ALTER TABLE public.list_items ADD COLUMN IF NOT EXISTS media_platform TEXT;
 ALTER TABLE public.list_items ADD COLUMN IF NOT EXISTS market_name TEXT;
+ALTER TABLE public.list_items ADD COLUMN IF NOT EXISTS position INTEGER DEFAULT 0;
 
 -- 4. ListPermissions Table
 CREATE TABLE IF NOT EXISTS public.list_permissions (
