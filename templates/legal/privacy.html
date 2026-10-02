@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Gizlilik Politikası - Do&Go List Maker{% endblock %}
+{% block meta_description %}Do&Go List Maker gizlilik politikası: Kişisel verilerinizin nasıl toplandığı, işlendiği ve korunduğu hakkında detaylı bilgiler.{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto py-6 space-y-8">
+    <div class="border-b border-slate-200 pb-6">
+        <a href="/" class="inline-flex items-center space-x-1.5 text-xs text-slate-500 hover:text-slate-800 transition mb-3">
+            <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+            <span>Ana Sayfaya Dön</span>
+        </a>
+        <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Gizlilik Politikası</h1>
+        <p class="text-sm text-slate-500 mt-2">Son güncelleme: 2 Ekim 2026</p>
+    </div>
+
+    <div class="prose prose-slate max-w-none space-y-6 text-sm leading-relaxed text-slate-700">
+        <section class="space-y-2">
+            <h2 class="text-lg font-bold text-slate-900">1. Genel Bilgilendirme</h2>
+            <p>
+                Do&Go List Maker ("Hizmet", "Biz"), kullanıcılarımızın gizliliğine ve kişisel verilerinin korunmasına azami özen göstermektedir. 
+                Bu Gizlilik Politikası, 6698 sayılı Kişisel Verilerin Korunması Kanunu (KVKK) ve Genel Veri Koruma Tüzüğü (GDPR) kapsamında, 
+                hizmetimizi kullanırken toplanan kişisel verilerinizin niteliğini, işlenme amaçlarını ve haklarınızı açıklamaktadır.
+            </p>
+        </section>
+
+        <section class="space-y-2">
+            <h2 class="text-lg font-bold text-slate-900">2. Toplanan Veriler</h2>
+            <p>Hizmetimizi kullanabilmeniz için aşağıdaki veriler işlenmektedir:</p>
+            <ul class="list-disc pl-5 space-y-1">
+                <li><strong>Hesap Bilgileri:</strong> Kayıt olurken sağladığınız kullanıcı adı, e-posta adresi ve şifrelenmiş parola özetleri.</li>
+                <li><strong>Kullanıcı İçeriği:</strong> Oluşturduğunuz listeler, öğeler, mekan konum linkleri, puanlamalar ve geri bildirim yorumları.</li>
+                <li><strong>Oturum ve Çerez Verileri:</strong> Güvenli oturum sürekliliğini sağlamak amacıyla kullanılan şifrelenmiş HTTP-Only çerezler (cookies).</li>
+                <li><strong>Teknik ve Günlük Verileri:</strong> Güvenlik denetimleri amacıyla IP adresi, tarayıcı türü ve erişim zamanları.</li>
+            </ul>
+        </section>
+
+        <section class="space-y-2">
+            <h2 class="text-lg font-bold text-slate-900">3. Verilerin İşlenme Amaçları</h2>
+            <p>Toplanan kişisel verileriniz yalnızca aşağıdaki amaçlarla işlenir:</p>
+            <ul class="list-disc pl-5 space-y-1">
+                <li>Kişisel ve ortak listelerin oluşturulması, senkronize edilmesi ve yönetilmesi,</li>
+                <li>Kullanıcı kimlik doğrulaması ve hesap güvenliğinin temin edilmesi,</li>
+                <li>Hizmet içi puanlama ve mekan değerlendirmelerinin şeffaf şekilde gösterilmesi,</li>
+                <li>Sistem hatalarının tespiti ve performans optimizasyonu.</li>
+            </ul>
+        </section>
+
+        <section class="space-y-2">
+            <h2 class="text-lg font-bold text-slate-900">4. Üçüncü Taraf Entegrasyonları ve Altyapı</h2>
+            <p>
+                Verileriniz güvenli bulut sağlayıcıları üzerinde barındırılmakta olup üçüncü şahıslara ticari amaçla satılmaz. 
+                Altyapımızda güvenli veri depolama için <strong>Supabase</strong> ve sunucusuz dağıtım için <strong>Vercel</strong> kullanılmaktadır. 
+                Tüm veri aktarımları uçtan uca TLS/HTTPS şifrelemesi ile korunmaktadır.
+            </p>
+        </section>
+
+        <section class="space-y-2">
+            <h2 class="text-lg font-bold text-slate-900">5. Kullanıcı Hakları</h2>
+            <p>
+                Kullanıcılarımız diledikleri zaman hesap bilgilerini güncelleme, listelerini silme veya hesaplarının tamamen kapatılmasını 
+                talep etme hakkına sahiptir. Sorularınız için bizimle iletişime geçebilirsiniz.
+            </p>
+        </section>
+    </div>
+</div>
+{% endblock %}

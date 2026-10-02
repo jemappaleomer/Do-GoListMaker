@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}Sıkça Sorulan Sorular (SSS) - Do&Go List Maker{% endblock %}
+{% block meta_description %}Do&Go List Maker hakkında en çok merak edilen sorular: Liste paylaşımı, ortak çalışma izinleri, mekan puanlama ve üyelik detayları.{% endblock %}
+
+{% block head_extra %}
+<!-- FAQ Schema Markup (JSON-LD) -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Do&Go List Maker nedir ve nasıl kullanılır?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Do&Go List Maker, arkadaşlarınızla mekan, etkinlik veya görev listeleri oluşturup birlikte yönetebileceğiniz, mekanlara puan ve yorum bırakabileceğiniz iş birliği odaklı bir web uygulamasıdır."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Listelerimi arkadaşlarımla nasıl paylaşabilirim?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Listenizin detay sayfasındaki 'Paylaşıma Açık' butonuna tıklayarak listenizi genel paylaşıma açabilir, oluşan bağlantıyı kopyalayarak arkadaşlarınıza gönderebilirsiniz."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Mekanlara buçuklu puan (örneğin 4.5 veya 3.5) verebilir miyim?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Evet! Do&Go List Maker 0.5 ile 5.0 arasında yarım yıldız hassasiyetinde puanlama sistemini ve kişisel yorumları destekler."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Uygulamayı kullanmak ücretsiz mi?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Evet, Do&Go List Maker tamamen ücretsizdir. İstediğiniz kadar liste oluşturabilir ve arkadaşlarınızla paylaşabilirsiniz."
+      }
+    }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto py-6 space-y-8">
+    <div class="border-b border-slate-200 pb-6 text-center sm:text-left">
+        <a href="/" class="inline-flex items-center space-x-1.5 text-xs text-slate-500 hover:text-slate-800 transition mb-3">
+            <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+            <span>Ana Sayfaya Dön</span>
+        </a>
+        <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Sıkça Sorulan Sorular</h1>
+        <p class="text-sm text-slate-500 mt-2">Do&Go List Maker hakkında merak ettiğiniz tüm detaylar ve pratik ipuçları.</p>
+    </div>
+
+    <!-- Accordion List -->
+    <div class="space-y-4" id="faq-accordion">
+        <!-- FAQ Item 1 -->
+        <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs transition">
+            <button onclick="toggleFaq('faq-1')" class="w-full px-6 py-4 text-left flex items-center justify-between gap-4 font-semibold text-slate-800 hover:text-emerald-600 transition">
+                <span>Do&Go List Maker nedir ve nasıl kullanılır?</span>
+                <i data-lucide="chevron-down" id="icon-faq-1" class="w-5 h-5 text-slate-400 transition-transform"></i>
+            </button>
+            <div id="faq-1" class="hidden px-6 pb-4 text-sm text-slate-600 leading-relaxed border-t border-slate-100 pt-3">
+                Do&Go List Maker, arkadaş gruplarınızla gezilecek yerler, izlenecek filmler veya yapılacak görevleri tek bir ortak platformda toplamanızı sağlar. Bir liste oluşturup maddeler ekleyebilir ve tek tıkla arkadaşlarınızı davet edebilirsiniz.
+            </div>
+        </div>
+
+        <!-- FAQ Item 2 -->
+        <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs transition">
+            <button onclick="toggleFaq('faq-2')" class="w-full px-6 py-4 text-left flex items-center justify-between gap-4 font-semibold text-slate-800 hover:text-emerald-600 transition">
+                <span>Listelerimi arkadaşlarımla nasıl paylaşabilirim?</span>
+                <i data-lucide="chevron-down" id="icon-faq-2" class="w-5 h-5 text-slate-400 transition-transform"></i>
+            </button>
+            <div id="faq-2" class="hidden px-6 pb-4 text-sm text-slate-600 leading-relaxed border-t border-slate-100 pt-3">
+                Oluşturduğunuz listenin içine girerek sağ üstteki <strong>"Özel Liste (Gizli)"</strong> butonuna tıklayın. Liste <strong>"Paylaşıma Açık"</strong> duruma geçtiğinde alt kısımda bir paylaşım bağlantısı oluşur. "Linki Kopyala" diyerek dilediğiniz kişiyle paylaşabilirsiniz.
+            </div>
+        </div>
+
+        <!-- FAQ Item 3 -->
+        <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs transition">
+            <button onclick="toggleFaq('faq-3')" class="w-full px-6 py-4 text-left flex items-center justify-between gap-4 font-semibold text-slate-800 hover:text-emerald-600 transition">
+                <span>Puanlama sistemi nasıl çalışır?</span>
+                <i data-lucide="chevron-down" id="icon-faq-3" class="w-5 h-5 text-slate-400 transition-transform"></i>
+            </button>
+            <div id="faq-3" class="hidden px-6 pb-4 text-sm text-slate-600 leading-relaxed border-t border-slate-100 pt-3">
+                Listede bir madde tamamlandığında (check kutusu işaretlendiğinde) altında <strong>"Puan Ver"</strong> butonu belirir. 0.5 ile 5.0 yıldız arasında istediğiniz buçuklu puanı seçebilir ve düşüncelerinizi yorum olarak ekleyebilirsiniz.
+            </div>
+        </div>
+
+        <!-- FAQ Item 4 -->
+        <div class="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-2xs transition">
+            <button onclick="toggleFaq('faq-4')" class="w-full px-6 py-4 text-left flex items-center justify-between gap-4 font-semibold text-slate-800 hover:text-emerald-600 transition">
+                <span>Google Haritalar linki eklemek zorunlu mu?</span>
+                <i data-lucide="chevron-down" id="icon-faq-4" class="w-5 h-5 text-slate-400 transition-transform"></i>
+            </button>
+            <div id="faq-4" class="hidden px-6 pb-4 text-sm text-slate-600 leading-relaxed border-t border-slate-100 pt-3">
+                Hayır, Google Haritalar linki tamamen opsiyoneldir. Ancak eklendiğinde kart üzerinde doğrudan haritada aç butonu görünür ve arkadaşlarınızın mekana tek tıkla yol tarifi almasını sağlar.
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function toggleFaq(id) {
+        const el = document.getElementById(id);
+        const icon = document.getElementById('icon-' + id);
+        if (el.classList.contains('hidden')) {
+            el.classList.remove('hidden');
+            icon.classList.add('rotate-180');
+        } else {
+            el.classList.add('hidden');
+            icon.classList.remove('rotate-180');
+        }
+    }
+</script>
+{% endblock %}
