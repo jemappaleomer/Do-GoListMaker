@@ -57,10 +57,20 @@ CREATE TABLE IF NOT EXISTS public.list_items (
     title TEXT NOT NULL,
     location_url TEXT,
     is_completed BOOLEAN DEFAULT false NOT NULL,
+    list_type TEXT DEFAULT 'GO' NOT NULL,      -- 'GO' veya 'DO'
+    tag TEXT DEFAULT 'cafe',                   -- 'cafe', 'restaurant', 'museum', 'travel', 'movie', 'series', 'book', 'shopping', 'other'
+    media_platform TEXT,                       -- 'Netflix', 'Disney+', 'Prime', 'HBO', 'AppleTV', 'YouTube', 'Cinema', 'Other'
+    market_name TEXT,                          -- 'Migros', 'Trendyol', 'Ikea' vb.
     created_by UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     completed_at TIMESTAMP WITH TIME ZONE
 );
+
+-- Kolonların mevcut tabloda da var olmasını garanti altına alan geçiş komutları:
+ALTER TABLE public.list_items ADD COLUMN IF NOT EXISTS list_type TEXT DEFAULT 'GO';
+ALTER TABLE public.list_items ADD COLUMN IF NOT EXISTS tag TEXT DEFAULT 'cafe';
+ALTER TABLE public.list_items ADD COLUMN IF NOT EXISTS media_platform TEXT;
+ALTER TABLE public.list_items ADD COLUMN IF NOT EXISTS market_name TEXT;
 
 -- 4. ListPermissions Table
 CREATE TABLE IF NOT EXISTS public.list_permissions (

@@ -274,6 +274,10 @@ async def delete_list(list_id: str, user: dict = Depends(get_current_user_requir
 async def add_item(
     list_id: str,
     title: str = Form(...),
+    list_type: str = Form("GO"),
+    tag: str = Form("cafe"),
+    media_platform: Optional[str] = Form(None),
+    market_name: Optional[str] = Form(None),
     location_url: Optional[str] = Form(None),
     user: dict = Depends(get_current_user_required)
 ):
@@ -283,22 +287,40 @@ async def add_item(
             return RedirectResponse(url=f"/lists/{list_id}?error={safe_error_param('Öğe başlığı boş olamaz.')}", status_code=status.HTTP_303_SEE_OTHER)
 
         safe_loc_url = sanitize_url(location_url)
+        clean_platform = media_platform.strip() if media_platform and media_platform.strip() != "None" else None
+        clean_market = market_name.strip() if market_name else None
 
         supabase = get_authenticated_client(user["access_token"])
         payload = {
             "list_id": list_id,
             "title": clean_title,
+            "list_type": list_type,
+            "tag": tag,
+            "media_platform": clean_platform,
+            "market_name": clean_market,
             "location_url": safe_loc_url,
             "is_completed": False
         }
 
-        # created_by kolonu varsa kullan, yoksa yalın ekle
+        # 1. Tüm dinamik alanlarla + created_by ile eklemeyi dene
         try:
             p_full = {**payload, "created_by": user["id"]}
             supabase.table("list_items").insert(p_full).execute()
-        except Exception as pe:
-            logger.info("Trying insert without created_by: %s", pe)
-            supabase.table("list_items").insert(payload).execute()
+        except Exception as e1:
+            logger.info("Insert full failed, trying without created_by: %s", e1)
+            try:
+                # 2. created_by olmadan dinamik alanlarla dene
+                supabase.table("list_items").insert(payload).execute()
+            except Exception as e2:
+                logger.info("Insert with dynamic fields failed, falling back to basic columns: %s", e2)
+                # 3. Eski şema uyumluluğu için sadece temel alanlarla ekle
+                basic_payload = {
+                    "list_id": list_id,
+                    "title": clean_title,
+                    "location_url": safe_loc_url,
+                    "is_completed": False
+                }
+                supabase.table("list_items").insert(basic_payload).execute()
 
         return RedirectResponse(url=f"/lists/{list_id}", status_code=status.HTTP_303_SEE_OTHER)
     except Exception as e:
