@@ -221,11 +221,15 @@
                         <optgroup label="📍 Gidilecekler (Go)" id="optgroup-go">
                             <option value="cafe" selected>☕ Kafe</option>
                             <option value="restaurant">🍽️ Restoran</option>
+                            <option value="concert">🎵 Konser / Festival</option>
+                            <option value="event">🎭 Etkinlik / Sahne</option>
                             <option value="museum">🏛️ Müze / Sanat</option>
                             <option value="travel">🌄 Gezilecek Yer</option>
                         </optgroup>
                         <!-- DO Tags (Hidden initially) -->
                         <optgroup label="🎬 Yapılacaklar (Do)" id="optgroup-do" class="hidden">
+                            <option value="idea">💡 Fikir / Proje</option>
+                            <option value="language">🌍 Dil Öğrenme</option>
                             <option value="series">📺 Dizi</option>
                             <option value="movie">🎬 Film</option>
                             <option value="book">📚 Kitap</option>
@@ -333,8 +337,12 @@
                                 <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
                                     {% if item.tag == 'cafe' %}☕ Kafe
                                     {% elif item.tag == 'restaurant' %}🍽️ Restoran
+                                    {% elif item.tag == 'concert' %}🎵 Konser
+                                    {% elif item.tag == 'event' %}🎭 Etkinlik
                                     {% elif item.tag == 'museum' %}🏛️ Müze
                                     {% elif item.tag == 'travel' %}🌄 Gezi
+                                    {% elif item.tag == 'idea' %}💡 Fikir
+                                    {% elif item.tag == 'language' %}🌍 Dil
                                     {% elif item.tag == 'movie' %}🎬 Film
                                     {% elif item.tag == 'series' %}📺 Dizi
                                     {% elif item.tag == 'book' %}📚 Kitap
@@ -544,10 +552,14 @@
                     <optgroup label="📍 Gidilecekler (Go)" id="edit-optgroup-go">
                         <option value="cafe">☕ Kafe</option>
                         <option value="restaurant">🍽️ Restoran</option>
+                        <option value="concert">🎵 Konser / Festival</option>
+                        <option value="event">🎭 Etkinlik / Sahne</option>
                         <option value="museum">🏛️ Müze / Sanat</option>
                         <option value="travel">🌄 Gezilecek Yer</option>
                     </optgroup>
                     <optgroup label="🎬 Yapılacaklar (Do)" id="edit-optgroup-do" class="hidden">
+                        <option value="idea">💡 Fikir / Proje</option>
+                        <option value="language">🌍 Dil Öğrenme</option>
                         <option value="series">📺 Dizi</option>
                         <option value="movie">🎬 Film</option>
                         <option value="book">📚 Kitap</option>
@@ -696,13 +708,13 @@
         if (tag === 'series' || tag === 'movie') {
             mediaPlatformBox.classList.remove('hidden');
             locationUrlBox.classList.add('hidden'); // Dizi/filmde haritaya gerek yok
-        } else if (tag === 'book') {
-            locationUrlBox.classList.add('hidden'); // Kitapta haritaya gerek yok
+        } else if (tag === 'book' || tag === 'idea' || tag === 'language') {
+            locationUrlBox.classList.add('hidden'); // Kitap, fikir ve dilde haritaya gerek yok
         } else if (tag === 'shopping') {
             marketNameBox.classList.remove('hidden');
             locationUrlBox.classList.remove('hidden'); // Alışverişte harita hibrit opsiyonel
         } else {
-            // Go tags: cafe, restaurant, museum, travel
+            // Go tags: cafe, restaurant, concert, event, museum, travel
             locationUrlBox.classList.remove('hidden');
         }
     }
@@ -903,7 +915,7 @@
             btnDo.className = "px-3 py-1 rounded-lg transition text-slate-600 hover:text-slate-900";
             optGo.classList.remove('hidden');
             optDo.classList.add('hidden');
-            if (['series', 'movie', 'book', 'shopping'].includes(tagSelect.value)) {
+            if (['series', 'movie', 'book', 'shopping', 'idea', 'language'].includes(tagSelect.value)) {
                 tagSelect.value = "cafe";
             }
         } else {
@@ -911,8 +923,8 @@
             btnGo.className = "px-3 py-1 rounded-lg transition text-slate-600 hover:text-slate-900";
             optDo.classList.remove('hidden');
             optGo.classList.add('hidden');
-            if (['cafe', 'restaurant', 'museum', 'travel'].includes(tagSelect.value)) {
-                tagSelect.value = "series";
+            if (['cafe', 'restaurant', 'museum', 'travel', 'concert', 'event'].includes(tagSelect.value)) {
+                tagSelect.value = "idea";
             }
         }
         onEditTagChange();
@@ -931,7 +943,7 @@
         if (tag === 'series' || tag === 'movie') {
             mediaBox.classList.remove('hidden');
             locationBox.classList.add('hidden');
-        } else if (tag === 'book') {
+        } else if (tag === 'book' || tag === 'idea' || tag === 'language') {
             locationBox.classList.add('hidden');
         } else if (tag === 'shopping') {
             marketBox.classList.remove('hidden');

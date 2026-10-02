@@ -26,14 +26,24 @@
     </div>
     {% endif %}
 
-    <!-- My Lists Section -->
-    <div class="space-y-4">
-        <div class="flex items-center space-x-2 text-slate-700">
-            <i data-lucide="folder" class="w-5 h-5 text-emerald-600"></i>
-            <h2 class="text-lg font-semibold">Benim Oluşturduklarım</h2>
-            <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">{{ my_lists|length }}</span>
-        </div>
+    <!-- Tabs for Switching Between 'Benim Listelerim' and 'Ortak / Paylaşılan Listeler' -->
+    <div class="flex items-center space-x-2 border-b border-slate-200">
+        <button onclick="switchTab('my-lists')" id="tab-btn-my"
+                class="pb-3 px-4 text-sm font-semibold text-emerald-600 border-b-2 border-emerald-600 flex items-center space-x-2 transition">
+            <i data-lucide="folder" class="w-4 h-4"></i>
+            <span>Benim Oluşturduklarım</span>
+            <span class="text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-bold">{{ my_lists|length }}</span>
+        </button>
+        <button onclick="switchTab('shared-lists')" id="tab-btn-shared"
+                class="pb-3 px-4 text-sm font-semibold text-slate-500 hover:text-slate-700 border-b-2 border-transparent flex items-center space-x-2 transition">
+            <i data-lucide="users" class="w-4 h-4"></i>
+            <span>Benimle Paylaşılanlar</span>
+            <span class="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-bold">{{ shared_lists|length }}</span>
+        </button>
+    </div>
 
+    <!-- My Lists Section -->
+    <div id="section-my-lists" class="space-y-4">
         {% if my_lists and my_lists|length > 0 %}
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {% for item in my_lists %}
@@ -71,21 +81,21 @@
             {% endfor %}
         </div>
         {% else %}
-        <div class="text-center py-10 bg-white rounded-2xl border border-dashed border-slate-300">
-            <p class="text-sm font-medium text-slate-600">Henüz kendinize ait bir liste oluşturmadınız.</p>
+        <div class="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-300 space-y-3">
+            <div class="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto">
+                <i data-lucide="folder-plus" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <p class="text-base font-semibold text-slate-700">Henüz kendi listenizi oluşturmadınız</p>
+                <p class="text-xs text-slate-500 mt-1">Hemen yukarıdaki "Yeni Liste Oluştur" butonuna basarak ilk listenizi başlatabilirsiniz.</p>
+            </div>
         </div>
         {% endif %}
     </div>
 
     <!-- Shared With Me Section -->
-    {% if shared_lists and shared_lists|length > 0 %}
-    <div class="space-y-4 pt-6 border-t border-slate-200">
-        <div class="flex items-center space-x-2 text-slate-700">
-            <i data-lucide="users" class="w-5 h-5 text-indigo-600"></i>
-            <h2 class="text-lg font-semibold">Benimle Paylaşılanlar</h2>
-            <span class="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-medium">{{ shared_lists|length }}</span>
-        </div>
-
+    <div id="section-shared-lists" class="space-y-4 hidden">
+        {% if shared_lists and shared_lists|length > 0 %}
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {% for item in shared_lists %}
             <div class="bg-white border border-indigo-100 rounded-2xl p-5 shadow-sm hover:shadow-md transition flex flex-col justify-between group">
@@ -118,8 +128,18 @@
             </div>
             {% endfor %}
         </div>
+        {% else %}
+        <div class="text-center py-12 bg-white rounded-2xl border border-dashed border-indigo-200 space-y-3">
+            <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto">
+                <i data-lucide="link-2" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <p class="text-base font-semibold text-slate-700">Henüz paylaşılan bir liste kaydetmediniz</p>
+                <p class="text-xs text-slate-500 mt-1">Arkadaşınızın size gönderdiği liste linkine tıklayıp <strong>"Listelerime Kaydet"</strong> butonuna bastığınızda, ortak listeniz her zaman burada yer alır.</p>
+            </div>
+        </div>
+        {% endif %}
     </div>
-    {% endif %}
 </div>
 
 <!-- Modal for New List -->
@@ -168,4 +188,36 @@
         </form>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function switchTab(tabId) {
+        const secMy = document.getElementById('section-my-lists');
+        const secShared = document.getElementById('section-shared-lists');
+        const btnMy = document.getElementById('tab-btn-my');
+        const btnShared = document.getElementById('tab-btn-shared');
+
+        if (tabId === 'my-lists') {
+            secMy.classList.remove('hidden');
+            secShared.classList.add('hidden');
+
+            btnMy.className = "pb-3 px-4 text-sm font-semibold text-emerald-600 border-b-2 border-emerald-600 flex items-center space-x-2 transition";
+            btnShared.className = "pb-3 px-4 text-sm font-semibold text-slate-500 hover:text-slate-700 border-b-2 border-transparent flex items-center space-x-2 transition";
+        } else {
+            secShared.classList.remove('hidden');
+            secMy.classList.add('hidden');
+
+            btnShared.className = "pb-3 px-4 text-sm font-semibold text-indigo-600 border-b-2 border-indigo-600 flex items-center space-x-2 transition";
+            btnMy.className = "pb-3 px-4 text-sm font-semibold text-slate-500 hover:text-slate-700 border-b-2 border-transparent flex items-center space-x-2 transition";
+        }
+    }
+
+    // URL'de #shared varsa otomatik o sekmeyi aç
+    document.addEventListener('DOMContentLoaded', () => {
+        if (window.location.hash === '#shared') {
+            switchTab('shared-lists');
+        }
+    });
+</script>
 {% endblock %}
